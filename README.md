@@ -1,4 +1,4 @@
-# 🗺️ M2G2 - Calculadora de Isócronas
+# 🗺️ Calculadora de Isócronas
 
 Ferramenta de inteligência imobiliária e mobilidade urbana que calcula **isócronas** (áreas de alcance por tempo) e cruza com dados censitários do IBGE.
 
