@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+dist/
+
+# Environment variables (API keys)
+.env
+
+# IBGE data (too large for Git)
+malha/
+
+# Python
+__pycache__/
+*.pyc
+
+# System
+.DS_Store
+
+# Backup
+index_backup.html
+
+# IDE
+.vscode/
+.idea/
