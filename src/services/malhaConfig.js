@@ -86,12 +86,13 @@ export const MALHA_CONFIG = {
         downloadCSV: downloadSubdistritosCSV,
         activeCls: 'bg-violet-500 text-white border-violet-400',
         inactiveCls: 'bg-white/60 text-slate-600 hover:bg-violet-50 border-slate-200/60',
-        listPrimary: (p) => p.NM_SUBDIST || 'Sem nome',
+        listPrimary: (p) => p.NM_SUBDIST || p.NM_DIST || 'Sem nome',
         listPrimaryClass: 'font-semibold text-[11px] text-violet-800',
         listSecondary: (p) => p.CD_SUBDIST,
         listSecondaryClass: 'text-slate-500 text-[9px] font-mono',
         buildPopup: (p) => `<div style="font-size:12px">
-            <b>Subdistrito: ${p.NM_SUBDIST || 'N/A'}</b><br/>
+            <b>Subdistrito: ${p.NM_SUBDIST || p.NM_DIST || 'N/A'}</b><br/>
+            Distrito: ${p.NM_DIST || 'N/A'}<br/>
             Código: ${p.CD_SUBDIST}<br/>
             Município: ${p.NM_MUN}<br/>
             População: ${(p.v0001_agg || 0).toLocaleString('pt-BR')}<br/>
