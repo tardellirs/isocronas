@@ -179,6 +179,8 @@ function App() {
                     opacity: isFaixa1 ? 1 : 0,
                     fillOpacity: 0,
                 });
+                // Desabilita cliques na isócrona para não bloquear os setores censitários
+                if (layer._path) layer._path.style.pointerEvents = 'none';
             } else {
                 let fillColor = '#10b981';
                 let strokeColor = '#047857';
@@ -191,6 +193,8 @@ function App() {
                     color: strokeColor, weight: 2, opacity: 1,
                     fillColor, fillOpacity: 0.25,
                 });
+                // Reabilita cliques na isócrona
+                if (layer._path) layer._path.style.pointerEvents = '';
             }
         });
     };
