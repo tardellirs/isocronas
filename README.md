@@ -7,6 +7,10 @@ Ferramenta de inteligência imobiliária e mobilidade urbana que calcula **isóc
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi&logoColor=white)
 ![Leaflet](https://img.shields.io/badge/Leaflet-1.9-199900?logo=leaflet&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3.10+-3776AB?logo=python&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![CI/CD](https://img.shields.io/badge/CI%2FCD-GitHub%20Actions-2088FF?logo=githubactions&logoColor=white)
+
+📡 **https://iso.imob.dev** — Oracle Ampere (ARM64) | Cloudflare SSL | Deploy automático via GitHub Actions
 
 ---
 
@@ -121,15 +125,53 @@ npm run dev
 
 Acesse **http://localhost:5173** no navegador.
 
-### Build de Produção
+## 🐳 Docker
+
+O projeto inclui suporte completo a Docker para desenvolvimento local e deploy em produção.
+
+### Build e execução local com Docker
 
 ```bash
-npm run build
-# Os arquivos estáticos são gerados em dist/
-# O backend serve automaticamente a pasta dist/ quando existe
-cd backend && python3 server.py
-# Acesse http://localhost:8000
+# 1. Crie o arquivo .env com suas chaves
+cp .env.example .env
+
+# 2. Build e start (frontend + backend em um só container)
+docker compose build
+docker compose up
+
+# Acesse http://localhost (via Nginx) ou http://localhost:8000 (direto)
 ```
+
+> **Nota:** O arquivo `malha/BR_setores_CD2022.gpkg` precisa existir localmente — ele é montado como volume read-only no container.
+
+### Arquivos Docker
+
+| Arquivo | Função |
+|---------|--------|
+| `Dockerfile` | Multi-stage: Node builda o frontend, Python serve API + dist/ |
+| `docker-compose.yml` | Orquestra os serviços `app` e `nginx` |
+| `nginx/nginx.conf` | Reverse proxy com SSL, gzip e headers de segurança |
+| `.dockerignore` | Exclui `node_modules/`, `malha/` e `.env` do contexto de build |
+
+---
+
+## 🚀 Deploy em Produção
+
+**URL:** https://iso.imob.dev — Oracle Ampere (ARM64) com Cloudflare SSL
+
+O deploy é **automático**: qualquer `git push` para a branch `main` aciona o workflow em `.github/workflows/deploy.yml`, que conecta via SSH na instância e executa o build + restart dos containers.
+
+Consulte o guia completo de configuração inicial da instância em **[docs/server-setup.md](docs/server-setup.md)**.
+
+### Segredos do GitHub (necessário configurar uma vez)
+
+Acesse: **seu repositório GitHub → Settings → Secrets and variables → Actions**
+
+| Secret | Valor |
+|--------|-------|
+| `SSH_HOST` | `132.226.247.169` |
+| `SSH_USER` | usuário SSH da instância (`ubuntu` ou `opc`) |
+| `SSH_PRIVATE_KEY` | chave privada SSH para acesso à instância |
 
 ## 🔧 APIs Utilizadas
 

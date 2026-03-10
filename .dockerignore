@@ -1,0 +1,39 @@
+# Dependências e builds locais
+node_modules/
+dist/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Dados grandes (montados como volume na instância)
+malha/
+
+# Variáveis de ambiente locais
+.env
+.env.local
+.env.*.local
+
+# Git
+.git/
+.gitignore
+
+# Docs e scripts (não necessários na imagem)
+docs/
+scripts/
+
+# CI/CD
+.github/
+
+# IDEs e sistema
+.vscode/
+.idea/
+.DS_Store
+*.swp
+*.swo
+
+# Backups e temporários
+index_backup.html
+*.log
+npm-debug.log*

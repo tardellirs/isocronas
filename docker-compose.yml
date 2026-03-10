@@ -1,0 +1,52 @@
+services:
+  # ─────────────────────────────────────────────────
+  # App: FastAPI backend + frontend React buildado
+  # ─────────────────────────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VITE_ORS_API_KEY: ${VITE_ORS_API_KEY}
+        VITE_GEMINI_API_KEY: ${VITE_GEMINI_API_KEY}
+    container_name: isocronas-app
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # GeoPackage IBGE — montado como read-only (não vai na imagem)
+      - ./malha:/app/malha:ro
+    expose:
+      - "8000"
+    networks:
+      - isocronas-net
+    healthcheck:
+      test: [ "CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # ─────────────────────────────────────────────────
+  # Nginx: reverse proxy com SSL (Cloudflare Origin CA)
+  # ─────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: isocronas-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      # Certificado Origin CA da Cloudflare (gerado uma única vez)
+      - ./nginx/certs:/etc/nginx/certs:ro
+    networks:
+      - isocronas-net
+    depends_on:
+      app:
+        condition: service_healthy
+
+networks:
+  isocronas-net:
+    driver: bridge

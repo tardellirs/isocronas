@@ -1,0 +1,65 @@
+name: 🚀 Deploy para Oracle Ampere
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:  # Permite trigger manual pelo GitHub UI
+
+jobs:
+  deploy:
+    name: Deploy via SSH
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 📋 Checkout do código
+        uses: actions/checkout@v4
+
+      - name: 🔑 Configurar SSH
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+
+      - name: 🚀 Deploy na instância Oracle
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+        run: |
+          # Adiciona o host ao known_hosts para evitar prompt interativo
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
+
+          ssh "$SSH_USER@$SSH_HOST" << 'ENDSSH'
+            set -e
+
+            echo "📁 Acessando o diretório do projeto..."
+            cd ~/isocronas
+
+            echo "📥 Sincronizando código do GitHub..."
+            git fetch origin main
+            git reset --hard origin/main
+
+            echo "🐳 Fazendo build e reiniciando containers..."
+            docker compose build --no-cache
+
+            echo "⬆️  Subindo containers..."
+            docker compose up -d
+
+            echo "🧹 Limpando imagens antigas..."
+            docker image prune -f
+
+            echo "✅ Deploy concluído! Verificando saúde da aplicação..."
+            sleep 5
+            docker compose ps
+          ENDSSH
+
+      - name: 🏥 Health check pós-deploy
+        run: |
+          sleep 10
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" https://iso.imob.dev/api/health || echo "000")
+          echo "Health check status: $HTTP_STATUS"
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "⚠️  Health check retornou status $HTTP_STATUS"
+            exit 1
+          fi
+          echo "✅ Aplicação saudável!"

@@ -164,7 +164,7 @@ function App() {
     const updateIsochroneStyle = (censusActive) => {
         if (!polygonLayerRef.current) return;
         const sortedRanges = [range1, range2, range3].sort((a, b) => a - b);
-        const fator = 0.9;
+        const fator = 0.80;
         const faixa1Max = sortedRanges[0] * 60 * fator + 10;
 
         polygonLayerRef.current.eachLayer((layer) => {
