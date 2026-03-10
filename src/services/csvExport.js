@@ -30,3 +30,43 @@ export const downloadCensusCSV = (censusSectors) => {
     link.click();
     URL.revokeObjectURL(url);
 };
+
+/**
+ * Exporta bairros como CSV (dados agregados dos setores)
+ */
+export const downloadBairrosCSV = (bairrosData) => {
+    if (!bairrosData || !bairrosData.features?.length) return;
+
+    const headers = [
+        'CD_BAIRRO', 'NM_BAIRRO', 'NM_MUN', 'AREA_KM2',
+        'v0001_agg', 'v0002_agg', 'v0003_agg', 'v0007_agg',
+        'setores_count', 'pct_cobertura',
+    ];
+
+    const headerLabels = [
+        'CD_BAIRRO', 'NM_BAIRRO', 'NM_MUN', 'AREA_KM2',
+        'POPULACAO', 'DOMICILIOS', 'DOM_PARTICULARES', 'DPO',
+        'SETORES', 'PCT_COBERTURA',
+    ];
+
+    const csvRows = [headerLabels.join(';')];
+
+    bairrosData.features.forEach((f) => {
+        const p = f.properties;
+        const row = headers.map((h) => {
+            const val = p[h];
+            if (val === null || val === undefined) return '';
+            return String(val).replace(/;/g, ',');
+        });
+        csvRows.push(row.join(';'));
+    });
+
+    const csvContent = csvRows.join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bairros_${bairrosData.summary?.municipio || 'export'}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+};

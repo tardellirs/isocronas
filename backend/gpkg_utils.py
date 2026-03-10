@@ -1,5 +1,5 @@
 """
-Utilitários para leitura do GeoPackage IBGE.
+Utilitários para leitura dos GeoPackages IBGE (Setores e Bairros).
 """
 
 import sqlite3
@@ -7,10 +7,11 @@ from pathlib import Path
 
 from shapely import wkb
 
-# Caminho do GeoPackage relativo ao diretório raiz do projeto
+# Caminhos dos GeoPackages
 GPKG_PATH = Path(__file__).parent.parent / "malha" / "BR_setores_CD2022.gpkg"
+BAIRRO_GPKG_PATH = Path(__file__).parent.parent / "malha" / "BR_bairros_CD2022.gpkg"
 
-# Colunas de atributos (sem geometria)
+# ── Setores Censitários ──────────────────────────────────────────
 ATTR_COLUMNS = [
     "CD_SETOR", "SITUACAO", "CD_SIT", "CD_TIPO", "AREA_KM2",
     "CD_MUN", "NM_MUN", "CD_DIST", "NM_DIST",
@@ -19,6 +20,15 @@ ATTR_COLUMNS = [
 ]
 
 ALL_COLUMNS = ["id", "geom"] + ATTR_COLUMNS
+
+# ── Bairros ──────────────────────────────────────────────────────
+BAIRRO_ATTR_COLUMNS = [
+    "CD_BAIRRO", "NM_BAIRRO", "CD_MUN", "NM_MUN",
+    "CD_DIST", "NM_DIST", "AREA_KM2",
+    "v0001", "v0002", "v0003", "v0004", "v0005", "v0006", "v0007",
+]
+
+BAIRRO_ALL_COLUMNS = ["id", "geom"] + BAIRRO_ATTR_COLUMNS
 
 
 def parse_gpkg_geom(blob: bytes):
@@ -51,9 +61,19 @@ def parse_gpkg_geom(blob: bytes):
         return None
 
 
-def get_db_connection():
-    """Retorna uma conexão SQLite ao GeoPackage."""
-    conn = sqlite3.connect(str(GPKG_PATH))
+def _make_connection(path: Path):
+    """Retorna uma conexão SQLite otimizada ao GeoPackage."""
+    conn = sqlite3.connect(str(path))
     conn.execute("PRAGMA cache_size = -50000")  # 50MB cache
     conn.execute("PRAGMA mmap_size = 268435456")  # 256MB mmap
     return conn
+
+
+def get_db_connection():
+    """Conexão ao GeoPackage de setores censitários."""
+    return _make_connection(GPKG_PATH)
+
+
+def get_bairro_db_connection():
+    """Conexão ao GeoPackage de bairros."""
+    return _make_connection(BAIRRO_GPKG_PATH)

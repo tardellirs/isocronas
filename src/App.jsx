@@ -5,9 +5,9 @@ import { marked } from 'marked';
 import { MODES, DEFAULT_API_KEY, GEMINI_API_KEY } from './services/api';
 import { geocodeAddress, reverseGeocode, getMunicipioCodIBGE } from './services/geocodeService';
 import { calculateIsochrone, getIsochroneStyle } from './services/isochroneService';
-import { fetchCensusSectorsAPI, SECTOR_DEFAULT_STYLE, SECTOR_HIGHLIGHT_STYLE } from './services/censusService';
+import { fetchCensusSectorsAPI, fetchBairrosAPI, SECTOR_DEFAULT_STYLE, SECTOR_HIGHLIGHT_STYLE, BAIRRO_DEFAULT_STYLE, BAIRRO_HIGHLIGHT_STYLE } from './services/censusService';
 import { fetchPOIsAPI, classifyPOI } from './services/poiService';
-import { downloadCensusCSV } from './services/csvExport';
+import { downloadCensusCSV, downloadBairrosCSV } from './services/csvExport';
 
 import Icon from './components/Icon';
 import HelpModal from './components/HelpModal';
@@ -56,13 +56,14 @@ function App() {
     const [loadingPOIs, setLoadingPOIs] = useState(false);
     const [foundPOIs, setFoundPOIs] = useState([]);
 
-    // --- Estado: Setores Censitários ---
+    // --- Estado: Setores Censitários / Bairros ---
     const [censusSectors, setCensusSectors] = useState(null);
     const [loadingCensus, setLoadingCensus] = useState(false);
     const [isCensusExpanded, setIsCensusExpanded] = useState(true);
     const [activeSectorId, setActiveSectorId] = useState(null);
     const [currentCdMun, setCurrentCdMun] = useState(null);
     const [showCensus, setShowCensus] = useState(false);
+    const [malhaType, setMalhaType] = useState('setores'); // 'setores' | 'bairros'
 
     // --- Effects ---
     useEffect(() => {
@@ -202,34 +203,47 @@ function App() {
         });
     };
 
-    // --- Setores Censitários ---
-    const toggleCensus = async () => {
-        const newState = !showCensus;
-        setShowCensus(newState);
-        if (newState) {
-            updateIsochroneStyle(true);
-            if (lastGeoJsonRef.current && currentCdMun) {
-                fetchCensusSectors(lastGeoJsonRef.current, currentCdMun);
-            } else {
-                setErrorMsg('Calcule a isócrona primeiro.');
-                setShowCensus(false);
-            }
+    // --- Setores Censitários / Bairros ---
+    const toggleMalha = async (type) => {
+        // Se clicar no mesmo tipo já ativo, desliga
+        if (showCensus && malhaType === type) {
+            clearCensusLayer();
+            return;
+        }
+
+        // Se trocar de tipo enquanto ativo, limpa e recarrega
+        if (showCensus && malhaType !== type) {
+            clearCensusLayer();
+        }
+
+        setMalhaType(type);
+        setShowCensus(true);
+        updateIsochroneStyle(true);
+
+        if (lastGeoJsonRef.current && currentCdMun) {
+            fetchMalhaData(lastGeoJsonRef.current, currentCdMun, type);
         } else {
-            if (censusLayerRef.current) {
-                mapInstanceRef.current.removeLayer(censusLayerRef.current);
-                censusLayerRef.current = null;
-            }
-            if (highlightLayerRef.current) {
-                mapInstanceRef.current.removeLayer(highlightLayerRef.current);
-                highlightLayerRef.current = null;
-            }
-            setCensusSectors(null);
-            setActiveSectorId(null);
-            updateIsochroneStyle(false);
+            setErrorMsg('Calcule a isócrona primeiro.');
+            setShowCensus(false);
         }
     };
 
-    const fetchCensusSectors = async (isochroneGeojson, cdMun) => {
+    const clearCensusLayer = () => {
+        if (censusLayerRef.current) {
+            mapInstanceRef.current.removeLayer(censusLayerRef.current);
+            censusLayerRef.current = null;
+        }
+        if (highlightLayerRef.current) {
+            mapInstanceRef.current.removeLayer(highlightLayerRef.current);
+            highlightLayerRef.current = null;
+        }
+        setCensusSectors(null);
+        setActiveSectorId(null);
+        setShowCensus(false);
+        updateIsochroneStyle(false);
+    };
+
+    const fetchMalhaData = async (isochroneGeojson, cdMun, type) => {
         if (!cdMun) return;
         setLoadingCensus(true);
         setCensusSectors(null);
@@ -244,63 +258,88 @@ function App() {
             highlightLayerRef.current = null;
         }
 
+        const isBairros = type === 'bairros';
+        const defaultStyle = isBairros ? BAIRRO_DEFAULT_STYLE : SECTOR_DEFAULT_STYLE;
+        const highlightStyle = isBairros ? BAIRRO_HIGHLIGHT_STYLE : SECTOR_HIGHLIGHT_STYLE;
+        const idKey = isBairros ? 'CD_BAIRRO' : 'CD_SETOR';
+
         try {
-            const data = await fetchCensusSectorsAPI(isochroneGeojson, cdMun);
+            const data = isBairros
+                ? await fetchBairrosAPI(isochroneGeojson, cdMun)
+                : await fetchCensusSectorsAPI(isochroneGeojson, cdMun);
+
             setCensusSectors(data);
 
             if (mapInstanceRef.current && data.features?.length > 0) {
                 sectorLayersRef.current = {};
                 censusLayerRef.current = L.geoJSON(data, {
-                    style: SECTOR_DEFAULT_STYLE,
+                    style: defaultStyle,
                     onEachFeature: (feature, layer) => {
                         const p = feature.properties;
-                        sectorLayersRef.current[p.CD_SETOR] = layer;
-                        layer.bindPopup(
-                            `<div style="font-size:12px">
-                <b>Setor: ${p.CD_SETOR}</b><br/>
-                Bairro: ${p.NM_BAIRRO || 'N/A'}<br/>
-                Situação: ${p.SITUACAO}<br/>
-                População: ${(p.v0001 || 0).toLocaleString('pt-BR')}<br/>
-                Domicílios: ${(p.v0002 || 0).toLocaleString('pt-BR')}<br/>
-                Área: ${(p.AREA_KM2 || 0).toFixed(3)} km²
-              </div>`
-                        );
-                        layer.on('click', () => highlightSector(p.CD_SETOR));
+                        sectorLayersRef.current[p[idKey]] = layer;
+
+                        if (isBairros) {
+                            layer.bindPopup(
+                                `<div style="font-size:12px">
+                                    <b>Bairro: ${p.NM_BAIRRO || 'N/A'}</b><br/>
+                                    Código: ${p.CD_BAIRRO}<br/>
+                                    Município: ${p.NM_MUN}<br/>
+                                    População: ${(p.v0001_agg || 0).toLocaleString('pt-BR')}<br/>
+                                    Domicílios: ${(p.v0002_agg || 0).toLocaleString('pt-BR')}<br/>
+                                    Setores: ${p.setores_count || 0}<br/>
+                                    Área: ${(p.AREA_KM2 || 0).toFixed(3)} km²
+                                </div>`
+                            );
+                        } else {
+                            layer.bindPopup(
+                                `<div style="font-size:12px">
+                                    <b>Setor: ${p.CD_SETOR}</b><br/>
+                                    Bairro: ${p.NM_BAIRRO || 'N/A'}<br/>
+                                    Situação: ${p.SITUACAO}<br/>
+                                    População: ${(p.v0001 || 0).toLocaleString('pt-BR')}<br/>
+                                    Domicílios: ${(p.v0002 || 0).toLocaleString('pt-BR')}<br/>
+                                    Área: ${(p.AREA_KM2 || 0).toFixed(3)} km²
+                                </div>`
+                            );
+                        }
+                        layer.on('click', () => highlightSector(p[idKey]));
                     },
                 }).addTo(mapInstanceRef.current);
 
-                // Traz a borda da Faixa 1 para frente (acima dos setores censitários)
+                // Traz a borda da Faixa 1 para frente
                 if (polygonLayerRef.current) {
                     polygonLayerRef.current.eachLayer((layer) => {
                         const val = layer.feature?.properties?.value;
                         if (val === undefined) return;
                         const sortedRanges = [range1, range2, range3].sort((a, b) => a - b);
                         const faixa1Max = sortedRanges[0] * 60 * 0.9 + 10;
-                        if (val <= faixa1Max) {
-                            layer.bringToFront();
-                        }
+                        if (val <= faixa1Max) layer.bringToFront();
                     });
                 }
             }
         } catch (err) {
-            console.error('Erro setores censitários:', err);
-            setErrorMsg(`Setores: ${err.message}. Verifique se o servidor backend está ativo.`);
+            console.error(`Erro ${type}:`, err);
+            setErrorMsg(`${isBairros ? 'Bairros' : 'Setores'}: ${err.message}`);
         } finally {
             setLoadingCensus(false);
         }
     };
 
-    const highlightSector = (cdSetor) => {
+    const highlightSector = (id) => {
         if (!mapInstanceRef.current) return;
-        setActiveSectorId(cdSetor);
+        setActiveSectorId(id);
+
+        const isBairros = malhaType === 'bairros';
+        const defaultStyle = isBairros ? BAIRRO_DEFAULT_STYLE : SECTOR_DEFAULT_STYLE;
+        const highlightStyle = isBairros ? BAIRRO_HIGHLIGHT_STYLE : SECTOR_HIGHLIGHT_STYLE;
 
         Object.entries(sectorLayersRef.current).forEach(([key, layer]) => {
-            if (key === cdSetor) {
-                layer.setStyle(SECTOR_HIGHLIGHT_STYLE);
+            if (key === id) {
+                layer.setStyle(highlightStyle);
                 layer.bringToFront();
                 layer.openPopup();
             } else {
-                layer.setStyle(SECTOR_DEFAULT_STYLE);
+                layer.setStyle(defaultStyle);
             }
         });
     };
@@ -618,29 +657,44 @@ function App() {
                                 {loading ? 'Calculando...' : 'Calcular Alcance'}
                             </button>
 
-                            <div className="grid grid-cols-2 gap-2">
-                                <button
-                                    onClick={togglePOIs}
-                                    className={`py-2.5 border-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 text-[11px] btn-secondary ${showPOIs
-                                        ? 'bg-amber-50 border-amber-300 text-amber-700'
-                                        : 'bg-white/60 border-slate-200/60 text-slate-600 hover:bg-white'
-                                        }`}
-                                >
-                                    {loadingPOIs ? <div className="spinner !w-3 !h-3 !border-slate-400 !border-t-transparent"></div> : <span>📍</span>}
-                                    {showPOIs ? 'Ocultar POIs' : 'POIs'}
-                                </button>
+                            {/* POIs */}
+                            <button
+                                onClick={togglePOIs}
+                                className={`w-full py-2.5 border-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 text-[11px] btn-secondary ${showPOIs
+                                    ? 'bg-amber-50 border-amber-300 text-amber-700'
+                                    : 'bg-white/60 border-slate-200/60 text-slate-600 hover:bg-white'
+                                    }`}
+                            >
+                                {loadingPOIs ? <div className="spinner !w-3 !h-3 !border-slate-400 !border-t-transparent"></div> : <span>📍</span>}
+                                {showPOIs ? 'Ocultar POIs' : 'Pontos de Interesse'}
+                            </button>
 
-                                <button
-                                    onClick={toggleCensus}
-                                    disabled={loadingCensus || !lastGeoJsonRef.current}
-                                    className={`py-2.5 border-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 text-[11px] btn-secondary ${showCensus
-                                        ? 'bg-blue-50 border-blue-300 text-blue-700'
-                                        : 'bg-white/60 border-slate-200/60 text-slate-600 hover:bg-white'
-                                        } ${!lastGeoJsonRef.current ? 'opacity-40 cursor-not-allowed' : ''}`}
-                                >
-                                    {loadingCensus ? <div className="spinner !w-3 !h-3 !border-blue-400 !border-t-blue-700"></div> : <span>🗺️</span>}
-                                    {showCensus ? 'Ocultar IBGE' : 'Setores IBGE'}
-                                </button>
+                            {/* Malha IBGE — Toggle Segmentado */}
+                            <div className={`rounded-xl border-2 overflow-hidden transition-all ${!lastGeoJsonRef.current ? 'opacity-40 pointer-events-none' : ''} ${showCensus ? 'border-blue-300' : 'border-slate-200/60'}`}>
+                                <div className="grid grid-cols-2">
+                                    <button
+                                        onClick={() => toggleMalha('setores')}
+                                        disabled={loadingCensus}
+                                        className={`py-2.5 font-semibold flex items-center justify-center gap-1.5 text-[11px] transition-all ${showCensus && malhaType === 'setores'
+                                            ? 'bg-blue-500 text-white'
+                                            : 'bg-white/60 text-slate-600 hover:bg-blue-50'
+                                            }`}
+                                    >
+                                        {loadingCensus && malhaType === 'setores' ? <div className="spinner !w-3 !h-3 !border-white/40 !border-t-white"></div> : <span>🗺️</span>}
+                                        Setores
+                                    </button>
+                                    <button
+                                        onClick={() => toggleMalha('bairros')}
+                                        disabled={loadingCensus}
+                                        className={`py-2.5 font-semibold flex items-center justify-center gap-1.5 text-[11px] border-l transition-all ${showCensus && malhaType === 'bairros'
+                                            ? 'bg-teal-500 text-white border-teal-400'
+                                            : 'bg-white/60 text-slate-600 hover:bg-teal-50 border-slate-200/60'
+                                            }`}
+                                    >
+                                        {loadingCensus && malhaType === 'bairros' ? <div className="spinner !w-3 !h-3 !border-white/40 !border-t-white"></div> : <span>🏘️</span>}
+                                        Bairros
+                                    </button>
+                                </div>
                             </div>
                         </div>
 
@@ -687,7 +741,7 @@ function App() {
                             </div>
                         )}
 
-                        {/* ── Painel Censitário ────────────────────── */}
+                        {/* ── Painel Censitário / Bairros ──────────── */}
                         <CensusPanel
                             loadingCensus={loadingCensus}
                             censusSectors={censusSectors}
@@ -695,7 +749,8 @@ function App() {
                             setIsCensusExpanded={setIsCensusExpanded}
                             activeSectorId={activeSectorId}
                             highlightSector={highlightSector}
-                            onDownload={() => downloadCensusCSV(censusSectors)}
+                            malhaType={malhaType}
+                            onDownload={() => malhaType === 'bairros' ? downloadBairrosCSV(censusSectors) : downloadCensusCSV(censusSectors)}
                         />
 
                         {errorMsg && <div className="text-red-600 text-xs bg-red-50/80 backdrop-blur p-2.5 rounded-xl border border-red-200/50 animate-fade-in">{errorMsg}</div>}

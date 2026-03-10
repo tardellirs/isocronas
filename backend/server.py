@@ -1,5 +1,5 @@
 """
-Backend FastAPI para consulta de setores censitários IBGE.
+Backend FastAPI para consulta de setores censitários e bairros IBGE.
 Lê o GeoPackage via SQLite + R-tree + Shapely para interseção espacial.
 """
 
@@ -11,7 +11,12 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from shapely.geometry import shape, mapping
 
-from gpkg_utils import GPKG_PATH, ATTR_COLUMNS, ALL_COLUMNS, parse_gpkg_geom, get_db_connection
+from gpkg_utils import (
+    GPKG_PATH, BAIRRO_GPKG_PATH,
+    ATTR_COLUMNS, ALL_COLUMNS,
+    BAIRRO_ATTR_COLUMNS, BAIRRO_ALL_COLUMNS,
+    parse_gpkg_geom, get_db_connection, get_bairro_db_connection,
+)
 from models import IsochroneRequest
 
 
@@ -19,21 +24,18 @@ from models import IsochroneRequest
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    if not GPKG_PATH.exists():
-        print(f"⚠️  ERRO: GeoPackage não encontrado em {GPKG_PATH}")
-        print("   Baixe o arquivo do IBGE e coloque em malha/BR_setores_CD2022.gpkg")
-    else:
-        print(f"✅ GeoPackage encontrado: {GPKG_PATH} ({GPKG_PATH.stat().st_size / 1e9:.1f} GB)")
-        conn = get_db_connection()
-        cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM BR_setores_CD2022")
-        count = cursor.fetchone()[0]
-        print(f"✅ Total de setores censitários: {count:,}")
-        conn.close()
+    for label, path, table in [
+        ("Setores", GPKG_PATH, "BR_setores_CD2022"),
+        ("Bairros", BAIRRO_GPKG_PATH, "BR_bairros_CD2022"),
+    ]:
+        if not path.exists():
+            print(f"⚠️  {label}: GeoPackage não encontrado em {path}")
+        else:
+            print(f"✅ {label}: {path} ({path.stat().st_size / 1e9:.1f} GB)")
     yield
 
 
-app = FastAPI(title="API Setores Censitários IBGE", lifespan=lifespan)
+app = FastAPI(title="API Setores Censitários & Bairros IBGE", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -43,91 +45,102 @@ app.add_middleware(
 )
 
 
+def _intersect_features(conn, table_name, all_columns, attr_columns, iso_geom, cd_mun, min_coverage=0.5):
+    """
+    Lógica genérica de interseção espacial para setores ou bairros.
+    Retorna (features, total_pop, total_dom).
+    """
+    minx, miny, maxx, maxy = iso_geom.bounds
+    cursor = conn.cursor()
+
+    cols_sql = ", ".join(f"s.{c}" for c in all_columns)
+    query = f"""
+        SELECT {cols_sql}
+        FROM {table_name} s
+        INNER JOIN rtree_{table_name}_geom r ON s.id = r.id
+        WHERE s.CD_MUN = ?
+          AND r.minx <= ? AND r.maxx >= ?
+          AND r.miny <= ? AND r.maxy >= ?
+    """
+    cursor.execute(query, (cd_mun, maxx, minx, maxy, miny))
+    rows = cursor.fetchall()
+
+    features = []
+    total_pop = 0
+    total_dom = 0
+
+    for row in rows:
+        geom_blob = row[1]
+        attrs = row[2:]
+
+        geom = parse_gpkg_geom(geom_blob)
+        if geom is None:
+            continue
+
+        if not geom.is_valid:
+            geom = geom.buffer(0)
+
+        if not iso_geom.intersects(geom):
+            continue
+
+        try:
+            intersection = iso_geom.intersection(geom)
+            area = geom.area
+            pct = (intersection.area / area) if area > 0 else 0.0
+        except Exception:
+            pct = 0.0
+
+        if pct < min_coverage:
+            continue
+
+        attr_dict = dict(zip(attr_columns, attrs))
+        attr_dict["pct_cobertura"] = round(pct * 100, 1)
+
+        # Converter v0001-v0007 para int/float
+        for k in ["v0001", "v0002", "v0003", "v0007"]:
+            if attr_dict.get(k) is not None:
+                try:
+                    attr_dict[k] = int(attr_dict[k])
+                except (ValueError, TypeError):
+                    attr_dict[k] = 0
+        for k in ["v0004", "v0005", "v0006"]:
+            if attr_dict.get(k) is not None:
+                try:
+                    attr_dict[k] = float(attr_dict[k])
+                except (ValueError, TypeError):
+                    attr_dict[k] = 0.0
+
+        simplified = geom.simplify(0.0001, preserve_topology=True)
+
+        feature = {
+            "type": "Feature",
+            "geometry": mapping(simplified),
+            "properties": attr_dict,
+        }
+        features.append(feature)
+
+        total_pop += attr_dict.get("v0001", 0) or 0
+        total_dom += attr_dict.get("v0002", 0) or 0
+
+    return features, total_pop, total_dom
+
+
 @app.post("/api/setores-isocrona")
 async def get_setores_isocrona(request: IsochroneRequest):
-    """
-    Retorna os setores censitários do município que intersectam a isócrona.
-    
-    Estratégia de performance:
-    1. Filtra por CD_MUN (reduz de 472k → ~85-1.500 setores)
-    2. Usa R-tree para pré-filtro por bounding box
-    3. Interseção fina com Shapely nos candidatos
-    4. Só inclui setores com >= 50% de área coberta
-    """
+    """Retorna setores censitários que intersectam a isócrona (>= 50% cobertura)."""
     try:
         iso_geom = shape(request.isochrone_geojson)
         if not iso_geom.is_valid:
             iso_geom = iso_geom.buffer(0)
-        minx, miny, maxx, maxy = iso_geom.bounds
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"GeoJSON inválido: {str(e)}")
 
     conn = get_db_connection()
-    cursor = conn.cursor()
-
     try:
-        cols_sql = ", ".join(f"s.{c}" for c in ALL_COLUMNS)
-
-        query = f"""
-            SELECT {cols_sql}
-            FROM BR_setores_CD2022 s
-            INNER JOIN rtree_BR_setores_CD2022_geom r ON s.id = r.id
-            WHERE s.CD_MUN = ?
-              AND r.minx <= ? AND r.maxx >= ?
-              AND r.miny <= ? AND r.maxy >= ?
-        """
-
-        cursor.execute(query, (request.cd_mun, maxx, minx, maxy, miny))
-        rows = cursor.fetchall()
-
-        features = []
-        total_pop = 0
-        total_dom = 0
-
-        for row in rows:
-            row_id = row[0]
-            geom_blob = row[1]
-            attrs = row[2:]
-
-            sector_geom = parse_gpkg_geom(geom_blob)
-            if sector_geom is None:
-                continue
-
-            if not sector_geom.is_valid:
-                sector_geom = sector_geom.buffer(0)
-
-            if not iso_geom.intersects(sector_geom):
-                continue
-
-            # Calcular % de cobertura
-            try:
-                intersection = iso_geom.intersection(sector_geom)
-                sector_area = sector_geom.area
-                pct_cobertura = (intersection.area / sector_area) if sector_area > 0 else 0.0
-            except Exception:
-                pct_cobertura = 0.0
-
-            # Filtro: mínimo 50% da área
-            if pct_cobertura < 0.5:
-                continue
-
-            attr_dict = dict(zip(ATTR_COLUMNS, attrs))
-            attr_dict["pct_cobertura"] = round(pct_cobertura * 100, 1)
-
-            simplified = sector_geom.simplify(0.0001, preserve_topology=True)
-
-            feature = {
-                "type": "Feature",
-                "geometry": mapping(simplified),
-                "properties": attr_dict,
-            }
-            features.append(feature)
-
-            if attr_dict.get("v0001"):
-                total_pop += attr_dict["v0001"]
-            if attr_dict.get("v0002"):
-                total_dom += attr_dict["v0002"]
-
+        features, total_pop, total_dom = _intersect_features(
+            conn, "BR_setores_CD2022", ALL_COLUMNS, ATTR_COLUMNS,
+            iso_geom, request.cd_mun,
+        )
         return {
             "type": "FeatureCollection",
             "features": features,
@@ -138,21 +151,105 @@ async def get_setores_isocrona(request: IsochroneRequest):
                 "municipio": request.cd_mun,
             },
         }
-
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Erro na consulta: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Erro: {str(e)}")
     finally:
         conn.close()
+
+
+@app.post("/api/bairros-isocrona")
+async def get_bairros_isocrona(request: IsochroneRequest):
+    """
+    Retorna bairros que intersectam a isócrona.
+    - Geometria: do GeoPackage de bairros
+    - Dados censitários: agregados dos setores por CD_BAIRRO (mais precisos)
+    """
+    try:
+        iso_geom = shape(request.isochrone_geojson)
+        if not iso_geom.is_valid:
+            iso_geom = iso_geom.buffer(0)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"GeoJSON inválido: {str(e)}")
+
+    # 1. Buscar geometrias dos bairros
+    bairro_conn = get_bairro_db_connection()
+    try:
+        bairro_features, _, _ = _intersect_features(
+            bairro_conn, "BR_bairros_CD2022", BAIRRO_ALL_COLUMNS, BAIRRO_ATTR_COLUMNS,
+            iso_geom, request.cd_mun, min_coverage=0.3,  # threshold menor para bairros (áreas maiores)
+        )
+    finally:
+        bairro_conn.close()
+
+    # 2. Agregar dados dos setores por CD_BAIRRO
+    setor_conn = get_db_connection()
+    try:
+        setor_features, _, _ = _intersect_features(
+            setor_conn, "BR_setores_CD2022", ALL_COLUMNS, ATTR_COLUMNS,
+            iso_geom, request.cd_mun,
+        )
+    finally:
+        setor_conn.close()
+
+    # Agregar setores por CD_BAIRRO
+    bairro_data = {}
+    for sf in setor_features:
+        p = sf["properties"]
+        cd = p.get("CD_BAIRRO", "")
+        if not cd:
+            continue
+        if cd not in bairro_data:
+            bairro_data[cd] = {
+                "v0001": 0, "v0002": 0, "v0003": 0, "v0007": 0,
+                "setores_count": 0,
+            }
+        bd = bairro_data[cd]
+        bd["v0001"] += p.get("v0001", 0) or 0
+        bd["v0002"] += p.get("v0002", 0) or 0
+        bd["v0003"] += p.get("v0003", 0) or 0
+        bd["v0007"] += p.get("v0007", 0) or 0
+        bd["setores_count"] += 1
+
+    # 3. Enriquecer features dos bairros com dados agregados
+    total_pop = 0
+    total_dom = 0
+    enriched_features = []
+
+    for bf in bairro_features:
+        cd = bf["properties"].get("CD_BAIRRO", "")
+        agg = bairro_data.get(cd, {})
+
+        bf["properties"]["v0001_agg"] = agg.get("v0001", 0)
+        bf["properties"]["v0002_agg"] = agg.get("v0002", 0)
+        bf["properties"]["v0003_agg"] = agg.get("v0003", 0)
+        bf["properties"]["v0007_agg"] = agg.get("v0007", 0)
+        bf["properties"]["setores_count"] = agg.get("setores_count", 0)
+
+        total_pop += agg.get("v0001", 0)
+        total_dom += agg.get("v0002", 0)
+        enriched_features.append(bf)
+
+    return {
+        "type": "FeatureCollection",
+        "features": enriched_features,
+        "summary": {
+            "total_bairros": len(enriched_features),
+            "total_populacao": total_pop,
+            "total_domicilios": total_dom,
+            "municipio": request.cd_mun,
+        },
+    }
 
 
 @app.get("/api/health")
 async def health():
     """Health check."""
-    exists = GPKG_PATH.exists()
+    setores_ok = GPKG_PATH.exists()
+    bairros_ok = BAIRRO_GPKG_PATH.exists()
     return {
-        "status": "ok" if exists else "error",
-        "gpkg_exists": exists,
-        "gpkg_path": str(GPKG_PATH),
+        "status": "ok" if setores_ok else "error",
+        "gpkg_setores": setores_ok,
+        "gpkg_bairros": bairros_ok,
     }
 
 
@@ -165,6 +262,4 @@ if dist_path.exists():
 if __name__ == "__main__":
     import uvicorn
     print("🚀 Iniciando servidor em http://localhost:8000")
-    print("📍 Frontend (dev): npm run dev → http://localhost:5173")
-    print("📍 Frontend (prod): http://localhost:8000")
     uvicorn.run(app, host="0.0.0.0", port=8000)
