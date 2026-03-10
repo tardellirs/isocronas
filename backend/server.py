@@ -48,7 +48,7 @@ app.add_middleware(
 )
 
 
-def _intersect_features(conn, table_name, all_columns, attr_columns, iso_geom, cd_mun, min_coverage=0.5):
+def _intersect_features(conn, table_name, all_columns, attr_columns, iso_geom, cd_mun, min_coverage=0.4):
     """
     Lógica genérica de interseção espacial para setores ou bairros.
     Retorna (features, total_pop, total_dom).
@@ -179,7 +179,7 @@ async def get_bairros_isocrona(request: IsochroneRequest):
     try:
         bairro_features, _, _ = _intersect_features(
             bairro_conn, "BR_bairros_CD2022", BAIRRO_ALL_COLUMNS, BAIRRO_ATTR_COLUMNS,
-            iso_geom, request.cd_mun, min_coverage=0.3,  # threshold menor para bairros (áreas maiores)
+            iso_geom, request.cd_mun, min_coverage=0.4,
         )
     finally:
         bairro_conn.close()
@@ -263,7 +263,7 @@ async def get_subdistritos_isocrona(request: IsochroneRequest):
         subdist_features, _, _ = _intersect_features(
             subdist_conn, "BR_subdistritos_CD2022",
             SUBDIST_ALL_COLUMNS, SUBDIST_ATTR_COLUMNS,
-            iso_geom, request.cd_mun, min_coverage=0.5,
+            iso_geom, request.cd_mun, min_coverage=0.4,
         )
     finally:
         subdist_conn.close()
