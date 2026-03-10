@@ -1,31 +1,64 @@
 # 🖥️ Setup do Servidor — Oracle Ampere (ARM64)
 
-Guia de configuração inicial da instância para rodar o **M2G2 Isócronas** via Docker.
+Guia de configuração da instância para rodar o **M2G2 Isócronas** via Docker.
 
-**IP:** `132.226.247.169`  
-**Domínio:** `iso.imob.dev` → DNS A record na Cloudflare
+**IP:** `132.226.247.169` | **Domínio:** `iso.imob.dev` (Cloudflare)
 
 ---
 
-## 1. Acesso à instância
+## Como funciona o SSL
 
-```bash
-ssh ubuntu@132.226.247.169
-# ou: ssh opc@132.226.247.169 (dependendo da imagem escolhida)
+```
+Usuário → HTTPS → Cloudflare (SSL público) → HTTP → Nginx → FastAPI
 ```
 
+> O SSL é gerenciado pela **Cloudflare** (nuvem laranja). O Nginx só precisa ouvir HTTP na porta 80 — nenhum certificado precisa ser instalado no servidor.
+
 ---
 
-## 2. Instalar Docker e Docker Compose
+## 1. Configurar a Cloudflare (OBRIGATÓRIO primeiro)
+
+Acesse o painel da Cloudflare → domínio `imob.dev` → **DNS**:
+
+### 1a. Verificar o registro DNS
+O registro A deve existir assim:
+
+| Tipo | Nome | Conteúdo | Proxy |
+|------|------|----------|-------|
+| `A` | `iso` | `132.226.247.169` | ☁️ **Proxied** (nuvem **laranja**) |
+
+> ⚠️ Se a nuvem estiver **cinza** (DNS only), o SSL não vai funcionar. Clique para torná-la **laranja**.
+
+### 1b. Configurar o modo SSL
+Acesse **SSL/TLS → Overview** e selecione:
+
+**✅ Full** (ou Full Strict)
+
+---
+
+## 2. Liberar porta 80 na Oracle
+
+### 2a. Firewall Linux (iptables)
+```bash
+sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT
+sudo apt install -y iptables-persistent
+sudo netfilter-persistent save
+```
+
+### 2b. Security List Oracle Cloud
+[console.oracle.com](https://console.oracle.com) → **Networking → VCN → Security Lists**
+
+Adicione uma **Ingress Rule**:
+- Protocolo: `TCP` | Source: `0.0.0.0/0` | Destination Port: `80`
+
+---
+
+## 3. Instalar Docker
 
 ```bash
-# Atualiza o sistema
 sudo apt update && sudo apt upgrade -y
-
-# Instala dependências
 sudo apt install -y ca-certificates curl gnupg
 
-# Adiciona repositório oficial do Docker
 sudo install -m 0755 -d /etc/apt/keyrings
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
   sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
@@ -37,38 +70,9 @@ https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo "$VERSION_C
 
 sudo apt update
 sudo apt install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-
-# Adiciona usuário ao grupo docker (sem precisar de sudo)
 sudo usermod -aG docker $USER
 newgrp docker
-
-# Verifica instalação
-docker --version
-docker compose version
 ```
-
----
-
-## 3. Liberar portas no firewall da Oracle
-
-### 3a. Firewall do Linux (iptables)
-
-```bash
-sudo iptables -I INPUT -p tcp --dport 80 -j ACCEPT
-sudo iptables -I INPUT -p tcp --dport 443 -j ACCEPT
-
-# Persiste entre reboots
-sudo apt install -y iptables-persistent
-sudo netfilter-persistent save
-```
-
-### 3b. Security List da Oracle Cloud
-
-No painel da Oracle ([console.oracle.com](https://console.oracle.com)):
-1. Acesse: **Networking → Virtual Cloud Networks → sua VCN → Security Lists**
-2. Adicione duas **Ingress Rules**:
-   - Protocolo: `TCP` | Source: `0.0.0.0/0` | Destination Port: `80`
-   - Protocolo: `TCP` | Source: `0.0.0.0/0` | Destination Port: `443`
 
 ---
 
@@ -81,39 +85,11 @@ cd ~/isocronas
 
 ---
 
-## 5. Gerar certificado SSL (Cloudflare Origin CA)
-
-> O DNS já está apontando para a instância com proxy da Cloudflare. Precisamos de um **Origin CA** para a comunicação Cloudflare ↔ servidor.
-
-1. Acesse **Cloudflare Dashboard → seu domínio imob.dev → SSL/TLS**
-2. Mude o modo para **Full (Strict)**
-3. Vá em **SSL/TLS → Origin Server → Create Certificate**
-4. Mantenha as configurações padrão (RSA 2048, 15 anos)
-5. Clique em **Create**
-6. Copie os dois valores gerados:
-   - **Certificate** → salve como `origin.crt`
-   - **Private Key** → salve como `origin.key`
-
-Na instância:
-```bash
-mkdir -p ~/isocronas/nginx/certs
-
-# Cole o conteúdo de cada arquivo:
-nano ~/isocronas/nginx/certs/origin.crt
-nano ~/isocronas/nginx/certs/origin.key
-
-# Ajusta permissões
-chmod 600 ~/isocronas/nginx/certs/origin.key
-chmod 644 ~/isocronas/nginx/certs/origin.crt
-```
-
----
-
-## 6. Upload do GeoPackage IBGE (~1.5 GB)
+## 5. Upload do GeoPackage IBGE (~1.5 GB)
 
 Execute **na sua máquina local**:
+
 ```bash
-# Cria o diretório na instância e faz o upload
 ssh ubuntu@132.226.247.169 "mkdir -p ~/isocronas/malha"
 
 rsync -avz --progress \
@@ -123,7 +99,7 @@ rsync -avz --progress \
 
 ---
 
-## 7. Configurar variáveis de ambiente
+## 6. Configurar variáveis de ambiente
 
 ```bash
 cd ~/isocronas
@@ -131,7 +107,6 @@ cp .env.example .env
 nano .env
 ```
 
-Preencha com suas chaves:
 ```env
 VITE_ORS_API_KEY=sua_chave_openrouteservice
 VITE_GEMINI_API_KEY=sua_chave_gemini
@@ -139,27 +114,25 @@ VITE_GEMINI_API_KEY=sua_chave_gemini
 
 ---
 
-## 8. Primeiro deploy
+## 7. Primeiro deploy
 
 ```bash
 cd ~/isocronas
-
-# Build e start
 docker compose build
 docker compose up -d
 
-# Verifica se está rodando
+# Verificar
 docker compose ps
 docker compose logs -f app
 ```
 
-Acesse **https://iso.imob.dev** — deve estar funcionando! 🎉
+Acesse **https://iso.imob.dev** — deve funcionar! 🎉
 
 ---
 
-## 9. Configurar CI/CD — Chaves SSH para GitHub Actions
+## 8. Configurar CI/CD (GitHub Actions)
 
-### 9a. Gerar par de chaves na instância
+### Gerar chave SSH na instância
 
 ```bash
 ssh-keygen -t ed25519 -C "github-actions-deploy" -f ~/.ssh/github_actions -N ""
@@ -167,44 +140,27 @@ cat ~/.ssh/github_actions.pub >> ~/.ssh/authorized_keys
 chmod 600 ~/.ssh/authorized_keys
 ```
 
-### 9b. Adicionar secrets no GitHub
+### Adicionar secrets no GitHub
 
-Acesse: **GitHub → seu repositório → Settings → Secrets and variables → Actions**
+**GitHub → seu repositório → Settings → Secrets → Actions**
 
 | Secret | Valor |
 |--------|-------|
 | `SSH_HOST` | `132.226.247.169` |
-| `SSH_USER` | `ubuntu` (ou o usuário da sua instância) |
-| `SSH_PRIVATE_KEY` | Conteúdo de `~/.ssh/github_actions` (chave **privada**) |
+| `SSH_USER` | `ubuntu` (ou `opc`) |
+| `SSH_PRIVATE_KEY` | conteúdo de `~/.ssh/github_actions` (chave privada) |
 
-Cole a chave privada:
 ```bash
-cat ~/.ssh/github_actions  # Copie todo o conteúdo
+cat ~/.ssh/github_actions  # Copie tudo, incluindo BEGIN/END
 ```
-
-A partir de agora, todo `git push` para a branch `main` fará deploy automático!
 
 ---
 
-## Comandos úteis no servidor
+## Comandos úteis
 
 ```bash
-# Ver status dos containers
-docker compose ps
-
-# Acompanhar logs em tempo real
-docker compose logs -f
-
-# Reiniciar a aplicação
-docker compose restart app
-
-# Parar tudo
-docker compose down
-
-# Deploy manual (mesmo comportamento do CI/CD)
-bash ~/isocronas/scripts/deploy.sh
-
-# Ver uso de disco
-df -h
-docker system df
+docker compose ps              # status dos containers
+docker compose logs -f         # logs em tempo real
+docker compose restart app     # reiniciar o app
+bash ~/isocronas/scripts/deploy.sh  # deploy manual
 ```
