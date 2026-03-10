@@ -77,29 +77,59 @@ const CensusPanel = ({
                                     const p = f.properties;
                                     const isActive = activeSectorId === p[idKey];
 
+                                    const GEO_FIELDS = [
+                                        { key: 'NM_DIST', label: 'Dist' },
+                                        { key: 'NM_SUBDIST', label: 'Subdist' },
+                                        { key: 'NM_BAIRRO', label: 'Bairro' },
+                                        { key: 'NM_NU', label: 'NU' },
+                                        { key: 'NM_AGLOM', label: 'Aglom' },
+                                        { key: 'NM_RGINT', label: 'RGInt' },
+                                        { key: 'NM_RGI', label: 'RGI' },
+                                    ];
+
                                     return (
                                         <div
                                             key={i}
-                                            className={`census-sector-item px-3 py-1.5 border-t border-${accentColor}-50/50 cursor-pointer flex justify-between items-center ${isActive ? 'active' : ''}`}
+                                            className={`census-sector-item px-3 py-2 border-t border-${accentColor}-50/50 cursor-pointer ${isActive ? 'active' : ''}`}
                                             onClick={() => highlightSector(p[idKey])}
                                         >
-                                            <div>
-                                                <div className={cfg.listPrimaryClass}>{cfg.listPrimary(p)}</div>
-                                                <div className={cfg.listSecondaryClass}>{cfg.listSecondary(p)}</div>
+                                            <div className="flex justify-between items-center">
+                                                <div>
+                                                    <div className={cfg.listPrimaryClass}>{cfg.listPrimary(p)}</div>
+                                                    <div className={cfg.listSecondaryClass}>{cfg.listSecondary(p)}</div>
+                                                </div>
+                                                <div className="text-right">
+                                                    {usesAggData ? (
+                                                        <>
+                                                            <div className="text-[10px] text-slate-700 font-semibold">{(p.v0001_agg || 0).toLocaleString('pt-BR')} hab</div>
+                                                            <div className="text-[9px] text-slate-400">{(p.v0002_agg || 0).toLocaleString('pt-BR')} dom • {p.setores_count || 0} set.</div>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <div className="text-[10px] text-slate-700 font-semibold">{(p.v0001 || 0).toLocaleString('pt-BR')} hab</div>
+                                                            <div className="text-[9px] text-slate-400">{(p.v0002 || 0).toLocaleString('pt-BR')} dom • {p.pct_cobertura}%</div>
+                                                        </>
+                                                    )}
+                                                </div>
                                             </div>
-                                            <div className="text-right">
-                                                {usesAggData ? (
-                                                    <>
-                                                        <div className="text-[10px] text-slate-700 font-semibold">{(p.v0001_agg || 0).toLocaleString('pt-BR')} hab</div>
-                                                        <div className="text-[9px] text-slate-400">{(p.v0002_agg || 0).toLocaleString('pt-BR')} dom • {p.setores_count || 0} set.</div>
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <div className="text-[10px] text-slate-700 font-semibold">{(p.v0001 || 0).toLocaleString('pt-BR')} hab</div>
-                                                        <div className="text-[9px] text-slate-400">{(p.v0002 || 0).toLocaleString('pt-BR')} dom • {p.pct_cobertura}%</div>
-                                                    </>
-                                                )}
-                                            </div>
+                                            {malhaType === 'setores' && (
+                                                <div className="mt-1.5 flex flex-wrap gap-1">
+                                                    {GEO_FIELDS.map(({ key, label }) => {
+                                                        const val = p[key] && p[key] !== '.' ? p[key] : null;
+                                                        return (
+                                                            <span
+                                                                key={key}
+                                                                className={`inline-flex items-center gap-0.5 text-[9px] px-1.5 py-0.5 rounded font-mono ${val
+                                                                        ? 'bg-amber-100 text-amber-800 border border-amber-200'
+                                                                        : 'bg-slate-100 text-slate-400 border border-slate-200'
+                                                                    }`}
+                                                            >
+                                                                <span className="font-bold">{label}:</span> {val || '—'}
+                                                            </span>
+                                                        );
+                                                    })}
+                                                </div>
+                                            )}
                                         </div>
                                     );
                                 })}

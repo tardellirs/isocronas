@@ -15,9 +15,15 @@ SUBDIST_GPKG_PATH = Path(__file__).parent.parent / "malha" / "BR_subdistritos_CD
 # ── Setores Censitários ──────────────────────────────────────────
 ATTR_COLUMNS = [
     "CD_SETOR", "SITUACAO", "CD_SIT", "CD_TIPO", "AREA_KM2",
-    "CD_MUN", "NM_MUN", "CD_DIST", "NM_DIST",
+    "CD_MUN", "NM_MUN",
+    "CD_DIST", "NM_DIST",
     "CD_SUBDIST", "NM_SUBDIST",
     "CD_BAIRRO", "NM_BAIRRO",
+    "CD_NU", "NM_NU",
+    "CD_AGLOM", "NM_AGLOM",
+    "CD_RGINT", "NM_RGINT",
+    "CD_RGI", "NM_RGI",
+    "CD_CONCURB", "NM_CONCURB",
     "v0001", "v0002", "v0003", "v0004", "v0005", "v0006", "v0007",
 ]
 
