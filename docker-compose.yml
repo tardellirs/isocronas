@@ -28,7 +28,7 @@ services:
       start_period: 15s
 
   # ─────────────────────────────────────────────────
-  # Nginx: reverse proxy (SSL gerenciado pela Cloudflare)
+  # Nginx: reverse proxy com SSL (self-signed para Cloudflare Full)
   # ─────────────────────────────────────────────────
   nginx:
     image: nginx:1.27-alpine
@@ -36,8 +36,10 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
     volumes:
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./nginx/certs:/etc/nginx/certs:ro
     networks:
       - isocronas-net
     depends_on:
