@@ -1,5 +1,5 @@
 """
-Utilitários para leitura dos GeoPackages IBGE (Setores e Bairros).
+Utilitários para leitura dos GeoPackages IBGE (Setores, Bairros e Subdistritos).
 """
 
 import sqlite3
@@ -10,11 +10,13 @@ from shapely import wkb
 # Caminhos dos GeoPackages
 GPKG_PATH = Path(__file__).parent.parent / "malha" / "BR_setores_CD2022.gpkg"
 BAIRRO_GPKG_PATH = Path(__file__).parent.parent / "malha" / "BR_bairros_CD2022.gpkg"
+SUBDIST_GPKG_PATH = Path(__file__).parent.parent / "malha" / "BR_subdistritos_CD2022.gpkg"
 
 # ── Setores Censitários ──────────────────────────────────────────
 ATTR_COLUMNS = [
     "CD_SETOR", "SITUACAO", "CD_SIT", "CD_TIPO", "AREA_KM2",
     "CD_MUN", "NM_MUN", "CD_DIST", "NM_DIST",
+    "CD_SUBDIST", "NM_SUBDIST",
     "CD_BAIRRO", "NM_BAIRRO",
     "v0001", "v0002", "v0003", "v0004", "v0005", "v0006", "v0007",
 ]
@@ -29,6 +31,15 @@ BAIRRO_ATTR_COLUMNS = [
 ]
 
 BAIRRO_ALL_COLUMNS = ["id", "geom"] + BAIRRO_ATTR_COLUMNS
+
+# ── Subdistritos ──────────────────────────────────────────────────
+SUBDIST_ATTR_COLUMNS = [
+    "CD_SUBDIST", "NM_SUBDIST", "CD_MUN", "NM_MUN",
+    "CD_DIST", "NM_DIST", "AREA_KM2",
+    "v0001", "v0002", "v0003", "v0004", "v0005", "v0006", "v0007",
+]
+
+SUBDIST_ALL_COLUMNS = ["id", "geom"] + SUBDIST_ATTR_COLUMNS
 
 
 def parse_gpkg_geom(blob: bytes):
@@ -77,3 +88,8 @@ def get_db_connection():
 def get_bairro_db_connection():
     """Conexão ao GeoPackage de bairros."""
     return _make_connection(BAIRRO_GPKG_PATH)
+
+
+def get_subdist_db_connection():
+    """Conexão ao GeoPackage de subdistritos."""
+    return _make_connection(SUBDIST_GPKG_PATH)

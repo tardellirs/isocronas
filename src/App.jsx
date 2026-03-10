@@ -5,9 +5,9 @@ import { marked } from 'marked';
 import { MODES, DEFAULT_API_KEY, GEMINI_API_KEY } from './services/api';
 import { geocodeAddress, reverseGeocode, getMunicipioCodIBGE } from './services/geocodeService';
 import { calculateIsochrone, getIsochroneStyle } from './services/isochroneService';
-import { fetchCensusSectorsAPI, fetchBairrosAPI, SECTOR_DEFAULT_STYLE, SECTOR_HIGHLIGHT_STYLE, BAIRRO_DEFAULT_STYLE, BAIRRO_HIGHLIGHT_STYLE } from './services/censusService';
+import { fetchCensusSectorsAPI, fetchBairrosAPI, fetchSubdistritosAPI, SECTOR_DEFAULT_STYLE, SECTOR_HIGHLIGHT_STYLE, BAIRRO_DEFAULT_STYLE, BAIRRO_HIGHLIGHT_STYLE, SUBDIST_DEFAULT_STYLE, SUBDIST_HIGHLIGHT_STYLE } from './services/censusService';
 import { fetchPOIsAPI, classifyPOI } from './services/poiService';
-import { downloadCensusCSV, downloadBairrosCSV } from './services/csvExport';
+import { downloadCensusCSV, downloadBairrosCSV, downloadSubdistritosCSV } from './services/csvExport';
 
 import Icon from './components/Icon';
 import HelpModal from './components/HelpModal';
@@ -259,14 +259,17 @@ function App() {
         }
 
         const isBairros = type === 'bairros';
-        const defaultStyle = isBairros ? BAIRRO_DEFAULT_STYLE : SECTOR_DEFAULT_STYLE;
-        const highlightStyle = isBairros ? BAIRRO_HIGHLIGHT_STYLE : SECTOR_HIGHLIGHT_STYLE;
-        const idKey = isBairros ? 'CD_BAIRRO' : 'CD_SETOR';
+        const isSubdistritos = type === 'subdistritos';
+        const defaultStyle = isSubdistritos ? SUBDIST_DEFAULT_STYLE : isBairros ? BAIRRO_DEFAULT_STYLE : SECTOR_DEFAULT_STYLE;
+        const highlightStyle = isSubdistritos ? SUBDIST_HIGHLIGHT_STYLE : isBairros ? BAIRRO_HIGHLIGHT_STYLE : SECTOR_HIGHLIGHT_STYLE;
+        const idKey = isSubdistritos ? 'CD_SUBDIST' : isBairros ? 'CD_BAIRRO' : 'CD_SETOR';
 
         try {
-            const data = isBairros
-                ? await fetchBairrosAPI(isochroneGeojson, cdMun)
-                : await fetchCensusSectorsAPI(isochroneGeojson, cdMun);
+            const data = isSubdistritos
+                ? await fetchSubdistritosAPI(isochroneGeojson, cdMun)
+                : isBairros
+                    ? await fetchBairrosAPI(isochroneGeojson, cdMun)
+                    : await fetchCensusSectorsAPI(isochroneGeojson, cdMun);
 
             setCensusSectors(data);
 
@@ -278,7 +281,19 @@ function App() {
                         const p = feature.properties;
                         sectorLayersRef.current[p[idKey]] = layer;
 
-                        if (isBairros) {
+                        if (isSubdistritos) {
+                            layer.bindPopup(
+                                `<div style="font-size:12px">
+                                    <b>Subdistrito: ${p.NM_SUBDIST || 'N/A'}</b><br/>
+                                    Código: ${p.CD_SUBDIST}<br/>
+                                    Município: ${p.NM_MUN}<br/>
+                                    População: ${(p.v0001_agg || 0).toLocaleString('pt-BR')}<br/>
+                                    Domicílios: ${(p.v0002_agg || 0).toLocaleString('pt-BR')}<br/>
+                                    Setores: ${p.setores_count || 0}<br/>
+                                    Área: ${(p.AREA_KM2 || 0).toFixed(3)} km²
+                                </div>`
+                            );
+                        } else if (isBairros) {
                             layer.bindPopup(
                                 `<div style="font-size:12px">
                                     <b>Bairro: ${p.NM_BAIRRO || 'N/A'}</b><br/>
@@ -319,7 +334,8 @@ function App() {
             }
         } catch (err) {
             console.error(`Erro ${type}:`, err);
-            setErrorMsg(`${isBairros ? 'Bairros' : 'Setores'}: ${err.message}`);
+            const label = isSubdistritos ? 'Subdistritos' : isBairros ? 'Bairros' : 'Setores';
+            setErrorMsg(`${label}: ${err.message}`);
         } finally {
             setLoadingCensus(false);
         }
@@ -330,8 +346,9 @@ function App() {
         setActiveSectorId(id);
 
         const isBairros = malhaType === 'bairros';
-        const defaultStyle = isBairros ? BAIRRO_DEFAULT_STYLE : SECTOR_DEFAULT_STYLE;
-        const highlightStyle = isBairros ? BAIRRO_HIGHLIGHT_STYLE : SECTOR_HIGHLIGHT_STYLE;
+        const isSubdistritos = malhaType === 'subdistritos';
+        const defaultStyle = isSubdistritos ? SUBDIST_DEFAULT_STYLE : isBairros ? BAIRRO_DEFAULT_STYLE : SECTOR_DEFAULT_STYLE;
+        const highlightStyle = isSubdistritos ? SUBDIST_HIGHLIGHT_STYLE : isBairros ? BAIRRO_HIGHLIGHT_STYLE : SECTOR_HIGHLIGHT_STYLE;
 
         Object.entries(sectorLayersRef.current).forEach(([key, layer]) => {
             if (key === id) {
@@ -671,11 +688,11 @@ function App() {
 
                             {/* Malha IBGE — Toggle Segmentado */}
                             <div className={`rounded-xl border-2 overflow-hidden transition-all ${!lastGeoJsonRef.current ? 'opacity-40 pointer-events-none' : ''} ${showCensus ? 'border-blue-300' : 'border-slate-200/60'}`}>
-                                <div className="grid grid-cols-2">
+                                <div className="grid grid-cols-3">
                                     <button
                                         onClick={() => toggleMalha('setores')}
                                         disabled={loadingCensus}
-                                        className={`py-2.5 font-semibold flex items-center justify-center gap-1.5 text-[11px] transition-all ${showCensus && malhaType === 'setores'
+                                        className={`py-2.5 font-semibold flex items-center justify-center gap-1 text-[11px] transition-all ${showCensus && malhaType === 'setores'
                                             ? 'bg-blue-500 text-white'
                                             : 'bg-white/60 text-slate-600 hover:bg-blue-50'
                                             }`}
@@ -686,13 +703,24 @@ function App() {
                                     <button
                                         onClick={() => toggleMalha('bairros')}
                                         disabled={loadingCensus}
-                                        className={`py-2.5 font-semibold flex items-center justify-center gap-1.5 text-[11px] border-l transition-all ${showCensus && malhaType === 'bairros'
+                                        className={`py-2.5 font-semibold flex items-center justify-center gap-1 text-[11px] border-l transition-all ${showCensus && malhaType === 'bairros'
                                             ? 'bg-teal-500 text-white border-teal-400'
                                             : 'bg-white/60 text-slate-600 hover:bg-teal-50 border-slate-200/60'
                                             }`}
                                     >
                                         {loadingCensus && malhaType === 'bairros' ? <div className="spinner !w-3 !h-3 !border-white/40 !border-t-white"></div> : <span>🏘️</span>}
                                         Bairros
+                                    </button>
+                                    <button
+                                        onClick={() => toggleMalha('subdistritos')}
+                                        disabled={loadingCensus}
+                                        className={`py-2.5 font-semibold flex items-center justify-center gap-1 text-[11px] border-l transition-all ${showCensus && malhaType === 'subdistritos'
+                                            ? 'bg-violet-500 text-white border-violet-400'
+                                            : 'bg-white/60 text-slate-600 hover:bg-violet-50 border-slate-200/60'
+                                            }`}
+                                    >
+                                        {loadingCensus && malhaType === 'subdistritos' ? <div className="spinner !w-3 !h-3 !border-white/40 !border-t-white"></div> : <span>🏛️</span>}
+                                        Subdist.
                                     </button>
                                 </div>
                             </div>
@@ -750,7 +778,7 @@ function App() {
                             activeSectorId={activeSectorId}
                             highlightSector={highlightSector}
                             malhaType={malhaType}
-                            onDownload={() => malhaType === 'bairros' ? downloadBairrosCSV(censusSectors) : downloadCensusCSV(censusSectors)}
+                            onDownload={() => malhaType === 'subdistritos' ? downloadSubdistritosCSV(censusSectors) : malhaType === 'bairros' ? downloadBairrosCSV(censusSectors) : downloadCensusCSV(censusSectors)}
                         />
 
                         {errorMsg && <div className="text-red-600 text-xs bg-red-50/80 backdrop-blur p-2.5 rounded-xl border border-red-200/50 animate-fade-in">{errorMsg}</div>}

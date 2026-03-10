@@ -1,5 +1,5 @@
 """
-Backend FastAPI para consulta de setores censitários e bairros IBGE.
+Backend FastAPI para consulta de setores censitários, bairros e subdistritos IBGE.
 Lê o GeoPackage via SQLite + R-tree + Shapely para interseção espacial.
 """
 
@@ -12,10 +12,12 @@ from fastapi.staticfiles import StaticFiles
 from shapely.geometry import shape, mapping
 
 from gpkg_utils import (
-    GPKG_PATH, BAIRRO_GPKG_PATH,
+    GPKG_PATH, BAIRRO_GPKG_PATH, SUBDIST_GPKG_PATH,
     ATTR_COLUMNS, ALL_COLUMNS,
     BAIRRO_ATTR_COLUMNS, BAIRRO_ALL_COLUMNS,
+    SUBDIST_ATTR_COLUMNS, SUBDIST_ALL_COLUMNS,
     parse_gpkg_geom, get_db_connection, get_bairro_db_connection,
+    get_subdist_db_connection,
 )
 from models import IsochroneRequest
 
@@ -27,6 +29,7 @@ async def lifespan(app: FastAPI):
     for label, path, table in [
         ("Setores", GPKG_PATH, "BR_setores_CD2022"),
         ("Bairros", BAIRRO_GPKG_PATH, "BR_bairros_CD2022"),
+        ("Subdistritos", SUBDIST_GPKG_PATH, "BR_subdistritos_CD2022"),
     ]:
         if not path.exists():
             print(f"⚠️  {label}: GeoPackage não encontrado em {path}")
@@ -35,7 +38,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="API Setores Censitários & Bairros IBGE", lifespan=lifespan)
+app = FastAPI(title="API Setores Censitários, Bairros & Subdistritos IBGE", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -241,15 +244,98 @@ async def get_bairros_isocrona(request: IsochroneRequest):
     }
 
 
+@app.post("/api/subdistritos-isocrona")
+async def get_subdistritos_isocrona(request: IsochroneRequest):
+    """
+    Retorna subdistritos que intersectam a isócrona (>= 50% cobertura).
+    - Geometria: do GeoPackage de subdistritos
+    - Dados censitários: agregados dos setores por CD_SUBDIST (mais precisos)
+    """
+    try:
+        iso_geom = shape(request.isochrone_geojson)
+        if not iso_geom.is_valid:
+            iso_geom = iso_geom.buffer(0)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"GeoJSON inválido: {str(e)}")
+
+    subdist_conn = get_subdist_db_connection()
+    try:
+        subdist_features, _, _ = _intersect_features(
+            subdist_conn, "BR_subdistritos_CD2022",
+            SUBDIST_ALL_COLUMNS, SUBDIST_ATTR_COLUMNS,
+            iso_geom, request.cd_mun, min_coverage=0.5,
+        )
+    finally:
+        subdist_conn.close()
+
+    setor_conn = get_db_connection()
+    try:
+        setor_features, _, _ = _intersect_features(
+            setor_conn, "BR_setores_CD2022", ALL_COLUMNS, ATTR_COLUMNS,
+            iso_geom, request.cd_mun,
+        )
+    finally:
+        setor_conn.close()
+
+    subdist_data = {}
+    for sf in setor_features:
+        p = sf["properties"]
+        cd = p.get("CD_SUBDIST", "")
+        if not cd:
+            continue
+        if cd not in subdist_data:
+            subdist_data[cd] = {
+                "v0001": 0, "v0002": 0, "v0003": 0, "v0007": 0,
+                "setores_count": 0,
+            }
+        sd = subdist_data[cd]
+        sd["v0001"] += p.get("v0001", 0) or 0
+        sd["v0002"] += p.get("v0002", 0) or 0
+        sd["v0003"] += p.get("v0003", 0) or 0
+        sd["v0007"] += p.get("v0007", 0) or 0
+        sd["setores_count"] += 1
+
+    total_pop = 0
+    total_dom = 0
+    enriched_features = []
+
+    for sf in subdist_features:
+        cd = sf["properties"].get("CD_SUBDIST", "")
+        agg = subdist_data.get(cd, {})
+
+        sf["properties"]["v0001_agg"] = agg.get("v0001", 0)
+        sf["properties"]["v0002_agg"] = agg.get("v0002", 0)
+        sf["properties"]["v0003_agg"] = agg.get("v0003", 0)
+        sf["properties"]["v0007_agg"] = agg.get("v0007", 0)
+        sf["properties"]["setores_count"] = agg.get("setores_count", 0)
+
+        total_pop += agg.get("v0001", 0)
+        total_dom += agg.get("v0002", 0)
+        enriched_features.append(sf)
+
+    return {
+        "type": "FeatureCollection",
+        "features": enriched_features,
+        "summary": {
+            "total_subdistritos": len(enriched_features),
+            "total_populacao": total_pop,
+            "total_domicilios": total_dom,
+            "municipio": request.cd_mun,
+        },
+    }
+
+
 @app.get("/api/health")
 async def health():
     """Health check."""
     setores_ok = GPKG_PATH.exists()
     bairros_ok = BAIRRO_GPKG_PATH.exists()
+    subdist_ok = SUBDIST_GPKG_PATH.exists()
     return {
         "status": "ok" if setores_ok else "error",
         "gpkg_setores": setores_ok,
         "gpkg_bairros": bairros_ok,
+        "gpkg_subdistritos": subdist_ok,
     }
 
 

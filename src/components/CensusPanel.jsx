@@ -14,10 +14,12 @@ const CensusPanel = ({
     if (!loadingCensus && !censusSectors) return null;
 
     const isBairros = malhaType === 'bairros';
-    const idKey = isBairros ? 'CD_BAIRRO' : 'CD_SETOR';
-    const title = isBairros ? 'Bairros' : 'Setores Censitários';
-    const countKey = isBairros ? 'total_bairros' : 'total_setores';
-    const accentColor = isBairros ? 'teal' : 'blue';
+    const isSubdistritos = malhaType === 'subdistritos';
+    const idKey = isSubdistritos ? 'CD_SUBDIST' : isBairros ? 'CD_BAIRRO' : 'CD_SETOR';
+    const title = isSubdistritos ? 'Subdistritos' : isBairros ? 'Bairros' : 'Setores Censitários';
+    const countKey = isSubdistritos ? 'total_subdistritos' : isBairros ? 'total_bairros' : 'total_setores';
+    const accentColor = isSubdistritos ? 'violet' : isBairros ? 'teal' : 'blue';
+    const usesAggData = isBairros || isSubdistritos;
 
     return (
         <div className={`glass-panel border border-${accentColor}-200/50 rounded-xl text-xs overflow-hidden animate-fade-in-up`}>
@@ -55,7 +57,7 @@ const CensusPanel = ({
                     {loadingCensus ? (
                         <div className={`text-${accentColor}-400 flex flex-col items-center py-4`}>
                             <div className={`spinner !border-${accentColor}-200 !border-t-${accentColor}-600 mb-2`}></div>
-                            <span className="text-xs">Buscando {isBairros ? 'bairros' : 'setores'}...</span>
+                            <span className="text-xs">Buscando {isSubdistritos ? 'subdistritos' : isBairros ? 'bairros' : 'setores'}...</span>
                         </div>
                     ) : censusSectors && censusSectors.features?.length > 0 ? (
                         <div>
@@ -63,7 +65,7 @@ const CensusPanel = ({
                             <div className="p-3 grid grid-cols-3 gap-2">
                                 <div className={`bg-white/70 backdrop-blur-sm rounded-lg p-2 text-center border border-${accentColor}-100/50`}>
                                     <div className={`text-${accentColor}-600 font-bold text-sm`}>{censusSectors.summary?.[countKey]?.toLocaleString('pt-BR')}</div>
-                                    <div className="text-slate-500 text-[9px] font-medium">{isBairros ? 'Bairros' : 'Setores'}</div>
+                                    <div className="text-slate-500 text-[9px] font-medium">{isSubdistritos ? 'Subdist.' : isBairros ? 'Bairros' : 'Setores'}</div>
                                 </div>
                                 <div className={`bg-white/70 backdrop-blur-sm rounded-lg p-2 text-center border border-${accentColor}-100/50`}>
                                     <div className={`text-${accentColor}-600 font-bold text-sm`}>{censusSectors.summary?.total_populacao?.toLocaleString('pt-BR')}</div>
@@ -88,7 +90,12 @@ const CensusPanel = ({
                                             onClick={() => highlightSector(p[idKey])}
                                         >
                                             <div>
-                                                {isBairros ? (
+                                                {isSubdistritos ? (
+                                                    <>
+                                                        <div className="font-semibold text-[11px] text-violet-800">{p.NM_SUBDIST || 'Sem nome'}</div>
+                                                        <div className="text-slate-500 text-[9px] font-mono">{p.CD_SUBDIST}</div>
+                                                    </>
+                                                ) : isBairros ? (
                                                     <>
                                                         <div className="font-semibold text-[11px] text-teal-800">{p.NM_BAIRRO || 'Sem nome'}</div>
                                                         <div className="text-slate-500 text-[9px] font-mono">{p.CD_BAIRRO}</div>
@@ -104,7 +111,7 @@ const CensusPanel = ({
                                                 )}
                                             </div>
                                             <div className="text-right">
-                                                {isBairros ? (
+                                                {usesAggData ? (
                                                     <>
                                                         <div className="text-[10px] text-slate-700 font-semibold">{(p.v0001_agg || 0).toLocaleString('pt-BR')} hab</div>
                                                         <div className="text-[9px] text-slate-400">{(p.v0002_agg || 0).toLocaleString('pt-BR')} dom • {p.setores_count || 0} set.</div>
@@ -122,7 +129,7 @@ const CensusPanel = ({
                             </div>
                         </div>
                     ) : censusSectors ? (
-                        <div className="p-3 text-slate-500 text-center">Nenhum {isBairros ? 'bairro' : 'setor'} encontrado nesta isócrona.</div>
+                        <div className="p-3 text-slate-500 text-center">Nenhum {isSubdistritos ? 'subdistrito' : isBairros ? 'bairro' : 'setor'} encontrado nesta isócrona.</div>
                     ) : null}
                 </div>
             )}

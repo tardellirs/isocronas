@@ -90,3 +90,42 @@ export const BAIRRO_HIGHLIGHT_STYLE = {
     fillColor: '#f97316',
     fillOpacity: 0.45,
 };
+
+/**
+ * Busca subdistritos que intersectam a Faixa 1 da isócrona
+ * (geometria do GeoPackage de subdistritos + dados agregados dos setores)
+ */
+export const fetchSubdistritosAPI = async (isochroneGeojson, cdMun) => {
+    const faixa1 = _extractFaixa1(isochroneGeojson);
+
+    const response = await fetch(`${BACKEND_URL}/api/subdistritos-isocrona`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ cd_mun: cdMun, isochrone_geojson: faixa1 }),
+    });
+
+    if (!response.ok) {
+        const err = await response.json().catch(() => null);
+        throw new Error(err?.detail || `Erro ${response.status}`);
+    }
+    return response.json();
+};
+
+/**
+ * Estilos para subdistritos no mapa (violet para diferenciar de setores e bairros)
+ */
+export const SUBDIST_DEFAULT_STYLE = {
+    color: '#7c3aed',
+    weight: 2,
+    opacity: 0.8,
+    fillColor: '#c4b5fd',
+    fillOpacity: 0.15,
+};
+
+export const SUBDIST_HIGHLIGHT_STYLE = {
+    color: '#ea580c',
+    weight: 3,
+    opacity: 1,
+    fillColor: '#f97316',
+    fillOpacity: 0.45,
+};
