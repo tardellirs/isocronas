@@ -30,6 +30,7 @@ function App() {
     const [coordinates, setCoordinates] = useState([-23.1896, -45.8841]);
     const [mode, setMode] = useState(MODES[0]);
     const [isPanelOpen, setIsPanelOpen] = useState(true);
+    const [sheetState, setSheetState] = useState('medium'); // 'collapsed' | 'medium' | 'expanded'
 
     // --- Estado: Faixas ---
     const [range1, setRange1] = useState(10);
@@ -91,6 +92,8 @@ function App() {
             mapInstanceRef.current.on('click', (e) => {
                 const { lat, lng } = e.latlng;
                 updateLocation([lat, lng], true);
+                // Auto-collapse bottom sheet on mobile map click
+                if (window.innerWidth < 768) setSheetState('collapsed');
             });
         }
     }, []);
@@ -464,7 +467,7 @@ function App() {
                 mapInstanceRef.current.fitBounds(polygonLayerRef.current.getBounds(), { padding: [20, 20] });
                 setShowMapLegend(true);
 
-                if (window.innerWidth < 768) setIsPanelOpen(false);
+                if (window.innerWidth < 768) setSheetState('collapsed');
                 if (showPOIs) fetchPOIs(targetCoords);
 
                 lastGeoJsonRef.current = geoJsonData;
@@ -486,186 +489,225 @@ function App() {
 
     const sortedLegend = [range1, range2, range3].sort((a, b) => a - b);
 
+    // --- Mobile sheet height classes ---
+    const sheetHeightClass = {
+        collapsed: 'h-[60px]',
+        medium: 'h-[50vh]',
+        expanded: 'h-[85vh]',
+    }[sheetState];
+
+    const cycleSheet = () => {
+        setSheetState(prev => {
+            if (prev === 'collapsed') return 'medium';
+            if (prev === 'medium') return 'expanded';
+            return 'collapsed';
+        });
+    };
+
     // --- Render ---
     return (
-        <div className="relative h-screen w-screen bg-gray-100 flex flex-col md:flex-row overflow-hidden">
+        <div className="relative h-screen w-screen bg-slate-900 flex flex-col md:flex-row overflow-hidden">
 
-            {/* Sidebar */}
+            {/* ══════════════════════════════════════════════════════════
+                Sidebar (Desktop) / Bottom Sheet (Mobile)
+                ══════════════════════════════════════════════════════════ */}
             <div
                 className={`
-          fixed left-0 w-full z-[1000] bg-white shadow-2xl transition-transform duration-300 ease-in-out
-          md:relative md:w-[400px] md:h-full md:shadow-xl md:translate-y-0 flex flex-col
-          ${isPanelOpen ? 'translate-y-0 bottom-0 h-[75vh] md:h-full' : 'translate-y-[calc(100%-60px)] bottom-0 h-[75vh] md:translate-y-0'}
-          rounded-t-2xl md:rounded-none
-        `}
+                    fixed bottom-0 left-0 w-full z-[1000] glass shadow-2xl
+                    transition-all duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]
+                    md:relative md:w-[400px] md:h-full md:shadow-xl flex flex-col
+                    ${sheetHeightClass} md:!h-full
+                    rounded-t-2xl md:rounded-none
+                `}
             >
-                {/* Header */}
+                {/* ── Mobile Handle ─────────────────────────────────── */}
                 <div
-                    className="p-4 bg-indigo-700 text-white shadow-md flex justify-between items-center cursor-pointer md:cursor-default rounded-t-2xl md:rounded-none shrink-0"
-                    onClick={() => { if (window.innerWidth < 768) setIsPanelOpen(!isPanelOpen); }}
+                    className="md:hidden pt-2.5 pb-1 cursor-pointer shrink-0"
+                    onClick={cycleSheet}
+                >
+                    <div className="sheet-handle" />
+                </div>
+
+                {/* ── Header ───────────────────────────────────────── */}
+                <div
+                    className="px-4 py-3 glass-dark text-white flex justify-between items-center cursor-pointer md:cursor-default md:rounded-none shrink-0"
+                    onClick={() => { if (window.innerWidth < 768) cycleSheet(); }}
                 >
                     <div>
-                        <h1 className="text-lg font-bold flex items-center gap-2">
-                            <Icon name="mapPin" className="text-indigo-200" />
-                            M2G2 - Isócronas
+                        <h1 className="text-base font-bold flex items-center gap-2 tracking-tight">
+                            <div className="w-7 h-7 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+                                <Icon name="mapPin" className="text-indigo-300" size={16} />
+                            </div>
+                            M2G2 Isócronas
                         </h1>
-                        <p className="text-indigo-200 text-[10px] mt-0.5">Inteligência Imobiliária & Mobilidade</p>
+                        <p className="text-slate-400 text-[10px] mt-0.5 ml-9 font-medium tracking-wide">Inteligência Imobiliária & Mobilidade</p>
                     </div>
-                    <div className="md:hidden text-indigo-200">
-                        <Icon name={isPanelOpen ? 'chevronDown' : 'chevronUp'} size={24} />
+                    <div className="md:hidden text-slate-400">
+                        <Icon name={sheetState === 'expanded' ? 'chevronDown' : 'chevronUp'} size={20} />
                     </div>
                 </div>
 
-                {/* Content */}
-                <div className="p-4 flex-1 space-y-3 overflow-y-auto custom-scroll bg-white">
+                {/* ── Content ──────────────────────────────────────── */}
+                <div className={`flex-1 overflow-y-auto custom-scroll bg-white/50 ${sheetState === 'collapsed' ? 'hidden md:block' : ''}`}>
+                    <div className="p-4 space-y-4">
 
-                    {/* Endereço */}
-                    <div className="space-y-1">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Ponto de Partida</label>
-                        <form onSubmit={handleSearchSubmit} className="relative">
-                            <input
-                                type="text" value={address}
-                                onChange={handleAddressChange}
-                                className={`w-full pl-9 pr-3 py-2 bg-gray-50 border rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500 text-sm transition-colors ${isAddressDirty ? 'border-indigo-300 ring-1 ring-indigo-200' : 'border-gray-200'}`}
-                                placeholder="Digite um endereço..."
-                            />
-                            <Icon name="search" className="absolute left-2.5 top-2.5 text-gray-400" size={16} />
-                            {searchLoading && <div className="absolute right-3 top-2.5"><div className="spinner !border-indigo-200 !border-t-indigo-600 !w-4 !h-4"></div></div>}
-                        </form>
-                        {isAddressDirty && <p className="text-[10px] text-indigo-600 animate-pulse">Pressione Enter ou Calcular para buscar</p>}
-                    </div>
+                        {/* ── Endereço ──────────────────────────────── */}
+                        <div className="space-y-1.5 animate-fade-in">
+                            <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Ponto de Partida</label>
+                            <form onSubmit={handleSearchSubmit} className="relative group">
+                                <input
+                                    type="text" value={address}
+                                    onChange={handleAddressChange}
+                                    className={`w-full pl-9 pr-3 py-2.5 bg-white/80 backdrop-blur-sm border rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-400 text-sm transition-all shadow-sm ${isAddressDirty ? 'border-indigo-300 ring-1 ring-indigo-200/50' : 'border-slate-200/80'}`}
+                                    placeholder="Digite um endereço..."
+                                />
+                                <Icon name="search" className="absolute left-2.5 top-3 text-slate-400 group-focus-within:text-indigo-500 transition-colors" size={16} />
+                                {searchLoading && <div className="absolute right-3 top-2.5"><div className="spinner !border-indigo-200 !border-t-indigo-600 !w-4 !h-4"></div></div>}
+                            </form>
+                            {isAddressDirty && <p className="text-[10px] text-indigo-500 animate-pulse-soft font-medium">Pressione Enter ou Calcular para buscar</p>}
+                        </div>
 
-                    {/* Transporte */}
-                    <div className="space-y-1">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Transporte</label>
-                        <div className="grid grid-cols-3 gap-2">
-                            {MODES.map((m) => (
-                                <button
-                                    key={m.id} onClick={() => setMode(m)}
-                                    className={`flex flex-col items-center justify-center p-2 rounded-xl border transition-all ${mode.id === m.id ? 'bg-indigo-50 border-indigo-500 text-indigo-700 shadow-sm' : 'bg-white border-gray-200 text-gray-500 hover:bg-gray-50'}`}
-                                >
-                                    <Icon name={m.icon} className="mb-1" size={18} />
-                                    <span className="text-[10px] font-medium">{m.label}</span>
-                                </button>
+                        {/* ── Transporte ────────────────────────────── */}
+                        <div className="space-y-1.5">
+                            <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Transporte</label>
+                            <div className="grid grid-cols-3 gap-2">
+                                {MODES.map((m) => (
+                                    <button
+                                        key={m.id} onClick={() => setMode(m)}
+                                        className={`flex flex-col items-center justify-center p-3 rounded-xl border-2 transition-all duration-200 min-h-[56px] ${mode.id === m.id
+                                            ? 'bg-indigo-50 border-indigo-400 text-indigo-700 shadow-md shadow-indigo-100'
+                                            : 'bg-white/60 border-slate-200/60 text-slate-500 hover:bg-white hover:border-slate-300'
+                                            }`}
+                                    >
+                                        <Icon name={m.icon} className="mb-0.5" size={20} />
+                                        <span className="text-[10px] font-semibold">{m.label}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* ── Faixas ────────────────────────────────── */}
+                        <div className="space-y-3 pt-3 border-t border-slate-200/50">
+                            <label className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Faixas de Tempo</label>
+
+                            {[
+                                { label: 'Faixa 1', color: 'emerald', val: range1, set: setRange1, slider: 'slider-green' },
+                                { label: 'Faixa 2', color: 'yellow', val: range2, set: setRange2, slider: 'slider-yellow' },
+                                { label: 'Faixa 3', color: 'red', val: range3, set: setRange3, slider: 'slider-red' },
+                            ].map(({ label, color, val, set, slider }) => (
+                                <div key={label} className="space-y-1">
+                                    <div className="flex justify-between items-center text-xs">
+                                        <div className={`flex items-center gap-1.5 text-${color}-600 font-bold`}>
+                                            <div className={`w-2 h-2 rounded-full bg-${color}-500`}></div>
+                                            {label}
+                                        </div>
+                                        <span className={`bg-${color}-50 text-${color}-700 px-2 py-0.5 rounded-full border border-${color}-200/50 font-mono text-[10px] font-semibold`}>{val} min</span>
+                                    </div>
+                                    <input type="range" min="1" max="60" value={val} onChange={(e) => set(parseInt(e.target.value))} className={`w-full h-1.5 rounded-lg cursor-pointer ${slider}`} />
+                                </div>
                             ))}
                         </div>
-                    </div>
 
-                    {/* Faixas */}
-                    <div className="space-y-2 pt-2 border-t border-gray-100">
-                        <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider block mb-1">Faixas de Tempo (Min)</label>
-                        <div className="space-y-0.5">
-                            <div className="flex justify-between items-center text-xs">
-                                <div className="flex items-center gap-1.5 text-emerald-600 font-bold">Faixa 1</div>
-                                <span className="bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded border border-emerald-100 font-mono text-[10px]">{range1} min</span>
-                            </div>
-                            <input type="range" min="1" max="60" value={range1} onChange={(e) => setRange1(parseInt(e.target.value))} className="w-full h-1.5 rounded-lg appearance-none cursor-pointer slider-green" />
-                        </div>
-                        <div className="space-y-0.5">
-                            <div className="flex justify-between items-center text-xs">
-                                <div className="flex items-center gap-1.5 text-yellow-600 font-bold">Faixa 2</div>
-                                <span className="bg-yellow-50 text-yellow-700 px-2 py-0.5 rounded border border-yellow-100 font-mono text-[10px]">{range2} min</span>
-                            </div>
-                            <input type="range" min="1" max="60" value={range2} onChange={(e) => setRange2(parseInt(e.target.value))} className="w-full h-1.5 rounded-lg appearance-none cursor-pointer slider-yellow" />
-                        </div>
-                        <div className="space-y-0.5">
-                            <div className="flex justify-between items-center text-xs">
-                                <div className="flex items-center gap-1.5 text-red-600 font-bold">Faixa 3</div>
-                                <span className="bg-red-50 text-red-700 px-2 py-0.5 rounded border border-red-100 font-mono text-[10px]">{range3} min</span>
-                            </div>
-                            <input type="range" min="1" max="60" value={range3} onChange={(e) => setRange3(parseInt(e.target.value))} className="w-full h-1.5 rounded-lg appearance-none cursor-pointer slider-red" />
-                        </div>
-                    </div>
-
-                    {/* Botões de ação */}
-                    <div className="flex flex-col gap-2">
-                        <button
-                            onClick={handleCalculate} disabled={loading}
-                            className={`w-full py-3 rounded-xl text-white font-bold shadow-lg flex items-center justify-center gap-2 transition-transform active:scale-95 text-sm ${loading ? 'bg-indigo-400 cursor-not-allowed' : 'bg-indigo-600 hover:bg-indigo-700'}`}
-                        >
-                            {loading ? <div className="spinner !w-4 !h-4"></div> : <Icon name="mapPin" size={16} />}
-                            {loading ? 'Atualizando...' : 'Calcular Alcance'}
-                        </button>
-
-                        <button
-                            onClick={togglePOIs}
-                            className={`w-full py-2.5 border rounded-xl font-medium flex items-center justify-center gap-2 transition-colors text-xs ${showPOIs ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'}`}
-                        >
-                            {loadingPOIs ? <div className="spinner !w-3 !h-3 !border-gray-400 !border-t-transparent"></div> : <Icon name="search" size={14} />}
-                            {showPOIs ? 'Ocultar Pontos de Interesse' : '📍 Mostrar Pontos de Interesse'}
-                        </button>
-
-                        <button
-                            onClick={toggleCensus}
-                            disabled={loadingCensus || !lastGeoJsonRef.current}
-                            className={`w-full py-2.5 border rounded-xl font-medium flex items-center justify-center gap-2 transition-colors text-xs ${showCensus ? 'bg-blue-50 border-blue-200 text-blue-700' : 'bg-white border-gray-200 text-gray-600 hover:bg-gray-50'} ${!lastGeoJsonRef.current ? 'opacity-50 cursor-not-allowed' : ''}`}
-                        >
-                            {loadingCensus ? <div className="spinner !w-3 !h-3 !border-blue-400 !border-t-blue-700"></div> : <Icon name="layers" size={14} />}
-                            {showCensus ? 'Ocultar Setores Censitários' : '🗺️ Selecionar Setor Censitário'}
-                        </button>
-                    </div>
-
-                    {/* IA */}
-                    {!loading && !errorMsg && (
-                        <button
-                            onClick={handleAnalyzeWithGemini}
-                            disabled={aiLoading}
-                            className="w-full py-3 bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-xl shadow-md font-medium flex items-center justify-center gap-2 hover:from-indigo-700 hover:to-purple-700 transition-all text-sm"
-                        >
-                            {aiLoading ? <div className="spinner !w-4 !h-4"></div> : <Icon name="home" size={16} />}
-                            {aiLoading ? 'Analisando...' : 'Análise Imobiliária com IA'}
-                        </button>
-                    )}
-
-                    {/* Painel IA */}
-                    {showAiResult && (
-                        <div className="bg-indigo-50 border border-indigo-100 rounded-xl text-xs overflow-hidden transition-all duration-300">
-                            <div
-                                className="p-3 flex justify-between items-center cursor-pointer hover:bg-indigo-100"
-                                onClick={() => setIsAiExpanded(!isAiExpanded)}
+                        {/* ── Botões de Ação ────────────────────────── */}
+                        <div className="flex flex-col gap-2.5 pt-1">
+                            <button
+                                onClick={handleCalculate} disabled={loading}
+                                className={`w-full py-3.5 rounded-xl text-white font-bold flex items-center justify-center gap-2 text-sm ${loading ? 'bg-indigo-400 cursor-not-allowed' : 'btn-primary'}`}
                             >
-                                <h3 className="font-bold text-indigo-800 flex items-center gap-2 m-0 border-0">
-                                    <Icon name="home" size={14} className="text-indigo-600" />
-                                    Relatório da Região
-                                </h3>
-                                <button className="text-indigo-400 hover:text-indigo-700">
-                                    <Icon name={isAiExpanded ? 'chevronUp' : 'chevronDown'} size={16} />
+                                {loading ? <div className="spinner !w-4 !h-4"></div> : <Icon name="mapPin" size={16} />}
+                                {loading ? 'Calculando...' : 'Calcular Alcance'}
+                            </button>
+
+                            <div className="grid grid-cols-2 gap-2">
+                                <button
+                                    onClick={togglePOIs}
+                                    className={`py-2.5 border-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 text-[11px] btn-secondary ${showPOIs
+                                        ? 'bg-amber-50 border-amber-300 text-amber-700'
+                                        : 'bg-white/60 border-slate-200/60 text-slate-600 hover:bg-white'
+                                        }`}
+                                >
+                                    {loadingPOIs ? <div className="spinner !w-3 !h-3 !border-slate-400 !border-t-transparent"></div> : <span>📍</span>}
+                                    {showPOIs ? 'Ocultar POIs' : 'POIs'}
+                                </button>
+
+                                <button
+                                    onClick={toggleCensus}
+                                    disabled={loadingCensus || !lastGeoJsonRef.current}
+                                    className={`py-2.5 border-2 rounded-xl font-semibold flex items-center justify-center gap-1.5 text-[11px] btn-secondary ${showCensus
+                                        ? 'bg-blue-50 border-blue-300 text-blue-700'
+                                        : 'bg-white/60 border-slate-200/60 text-slate-600 hover:bg-white'
+                                        } ${!lastGeoJsonRef.current ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                >
+                                    {loadingCensus ? <div className="spinner !w-3 !h-3 !border-blue-400 !border-t-blue-700"></div> : <span>🗺️</span>}
+                                    {showCensus ? 'Ocultar IBGE' : 'Setores IBGE'}
                                 </button>
                             </div>
-
-                            {isAiExpanded && (
-                                <div className="p-3 pt-0 border-t border-indigo-100 max-h-[40vh] overflow-y-auto custom-scroll">
-                                    {aiAnalysis ? (
-                                        <div className="prose prose-sm text-gray-700" dangerouslySetInnerHTML={{ __html: marked.parse(aiAnalysis) }} />
-                                    ) : (
-                                        <div className="text-indigo-400 flex flex-col items-center py-4">
-                                            <div className="spinner !border-indigo-200 !border-t-indigo-600 mb-2"></div>
-                                            <span>Consultando dados imobiliários...</span>
-                                        </div>
-                                    )}
-                                </div>
-                            )}
                         </div>
-                    )}
 
-                    {/* Painel Censitário */}
-                    <CensusPanel
-                        loadingCensus={loadingCensus}
-                        censusSectors={censusSectors}
-                        isCensusExpanded={isCensusExpanded}
-                        setIsCensusExpanded={setIsCensusExpanded}
-                        activeSectorId={activeSectorId}
-                        highlightSector={highlightSector}
-                        onDownload={() => downloadCensusCSV(censusSectors)}
-                    />
+                        {/* ── IA ────────────────────────────────────── */}
+                        {!loading && !errorMsg && (
+                            <button
+                                onClick={handleAnalyzeWithGemini}
+                                disabled={aiLoading}
+                                className="w-full py-3.5 btn-ai text-white rounded-xl font-bold flex items-center justify-center gap-2 text-sm"
+                            >
+                                {aiLoading ? <div className="spinner !w-4 !h-4"></div> : <span>✨</span>}
+                                {aiLoading ? 'Analisando...' : 'Análise com IA'}
+                            </button>
+                        )}
 
-                    {errorMsg && <div className="text-red-600 text-xs bg-red-50 p-2 rounded">{errorMsg}</div>}
-                    <div className="h-16 md:hidden"></div>
+                        {/* ── Painel IA ─────────────────────────────── */}
+                        {showAiResult && (
+                            <div className="glass-panel border border-indigo-200/50 rounded-xl text-xs overflow-hidden animate-fade-in-up">
+                                <div
+                                    className="p-3 flex justify-between items-center cursor-pointer hover:bg-indigo-50/50 transition-colors"
+                                    onClick={() => setIsAiExpanded(!isAiExpanded)}
+                                >
+                                    <h3 className="font-bold text-indigo-800 flex items-center gap-2 m-0 border-0">
+                                        <span>✨</span>
+                                        Relatório da Região
+                                    </h3>
+                                    <button className="text-indigo-400 hover:text-indigo-700 transition-colors">
+                                        <Icon name={isAiExpanded ? 'chevronUp' : 'chevronDown'} size={16} />
+                                    </button>
+                                </div>
+
+                                {isAiExpanded && (
+                                    <div className="p-3 pt-0 border-t border-indigo-100/50 max-h-[40vh] overflow-y-auto custom-scroll">
+                                        {aiAnalysis ? (
+                                            <div className="prose prose-sm text-gray-700" dangerouslySetInnerHTML={{ __html: marked.parse(aiAnalysis) }} />
+                                        ) : (
+                                            <div className="text-indigo-400 flex flex-col items-center py-4">
+                                                <div className="spinner !border-indigo-200 !border-t-indigo-600 mb-2"></div>
+                                                <span className="text-xs">Consultando IA...</span>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* ── Painel Censitário ────────────────────── */}
+                        <CensusPanel
+                            loadingCensus={loadingCensus}
+                            censusSectors={censusSectors}
+                            isCensusExpanded={isCensusExpanded}
+                            setIsCensusExpanded={setIsCensusExpanded}
+                            activeSectorId={activeSectorId}
+                            highlightSector={highlightSector}
+                            onDownload={() => downloadCensusCSV(censusSectors)}
+                        />
+
+                        {errorMsg && <div className="text-red-600 text-xs bg-red-50/80 backdrop-blur p-2.5 rounded-xl border border-red-200/50 animate-fade-in">{errorMsg}</div>}
+                        <div className="h-8 md:hidden"></div>
+                    </div>
                 </div>
             </div>
 
-            {/* Mapa */}
-            <div id="map" className="flex-1 bg-gray-200 relative">
+            {/* ══════════════════════════════════════════════════════════
+                Mapa
+                ══════════════════════════════════════════════════════════ */}
+            <div id="map" className="flex-1 bg-slate-200 relative">
                 {showMapLegend && (
                     <MapLegend sortedLegend={sortedLegend} censusSectors={censusSectors} />
                 )}
