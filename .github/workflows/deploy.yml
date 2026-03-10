@@ -10,7 +10,7 @@ jobs:
   deploy:
     name: Deploy via SSH
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: 📋 Checkout do código
@@ -26,18 +26,22 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
         run: |
-          # Adiciona o host ao known_hosts para evitar prompt interativo
-          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts
-
-          ssh "$SSH_USER@$SSH_HOST" << 'ENDSSH'
+          ssh -o StrictHostKeyChecking=no "$SSH_USER@$SSH_HOST" bash -s << 'ENDSSH'
             set -e
+            export PATH=$PATH:/usr/bin:/usr/local/bin
 
             echo "📁 Acessando o diretório do projeto..."
             cd ~/isocronas
 
+            echo "📥 Commit atual antes do pull:"
+            git log --oneline -1
+
             echo "📥 Sincronizando código do GitHub..."
             git fetch origin main
             git reset --hard origin/main
+
+            echo "✅ Commit após pull:"
+            git log --oneline -1
 
             echo "🐳 Fazendo build e reiniciando containers..."
             docker compose build --no-cache
@@ -48,8 +52,7 @@ jobs:
             echo "🧹 Limpando imagens antigas..."
             docker image prune -f
 
-            echo "✅ Deploy concluído! Verificando saúde da aplicação..."
-            sleep 5
+            echo "✅ Deploy concluído!"
             docker compose ps
           ENDSSH
 
