@@ -261,6 +261,19 @@ function App() {
                         layer.on('click', () => highlightSector(p.CD_SETOR));
                     },
                 }).addTo(mapInstanceRef.current);
+
+                // Traz a borda da Faixa 1 para frente (acima dos setores censitários)
+                if (polygonLayerRef.current) {
+                    polygonLayerRef.current.eachLayer((layer) => {
+                        const val = layer.feature?.properties?.value;
+                        if (val === undefined) return;
+                        const sortedRanges = [range1, range2, range3].sort((a, b) => a - b);
+                        const faixa1Max = sortedRanges[0] * 60 * 0.80 + 10;
+                        if (val <= faixa1Max) {
+                            layer.bringToFront();
+                        }
+                    });
+                }
             }
         } catch (err) {
             console.error('Erro setores censitários:', err);

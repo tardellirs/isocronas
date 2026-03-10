@@ -21,3 +21,10 @@ index_backup.html
 # IDE
 .vscode/
 .idea/
+
+# SSH keys (NUNCA versionar)
+*.key
+ssh-key-*
+
+# Certificados SSL do servidor
+nginx/certs/
