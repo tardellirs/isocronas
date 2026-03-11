@@ -28,3 +28,6 @@ ssh-key-*
 
 # Certificados SSL do servidor
 nginx/certs/
+
+# Contexto do projeto para Claude (pode conter informações sensíveis)
+CLAUDE.md
