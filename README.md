@@ -19,10 +19,13 @@ Ferramenta de inteligência imobiliária e mobilidade urbana que calcula **isóc
 - **Isócronas por tempo** — Visualize o que é acessível em X minutos de carro, bicicleta ou a pé
 - **Setores censitários IBGE** — Cruza isócronas com dados do Censo 2022 (população, domicílios, bairros)
 - **Filtro de 50% de área** — Inclui apenas setores com no mínimo 50% da área dentro da isócrona
+- **Camadas de malha IBGE** — Toggles para subdistritos e bairros IBGE com threshold de 50% de cobertura
+- **Badges por setor** — Exibe NM_DIST, NM_SUBDIST, BAIRRO, NU, AGLOM, RGINT e RGI em modo exploração
 - **Pontos de Interesse** — Farmácias, escolas, hospitais, parques, mercados via Overpass API
 - **Análise com IA** — Relatório imobiliário automatizado via Google Gemini (opcional)
 - **Download CSV** — Exporta lista de setores censitários com dados populacionais
 - **Highlight interativo** — Clique em setores no mapa ou na lista para destacá-los
+- **UI modernizada** — Design glassmorphism com bottom sheet responsivo
 
 ## 🏗️ Estrutura do Projeto
 
@@ -42,6 +45,7 @@ isocronas/
 │       ├── geocodeService.js     # Nominatim + IBGE
 │       ├── isochroneService.js   # OpenRouteService API
 │       ├── censusService.js      # Backend de setores
+│       ├── malhaConfig.js        # Config centralizada das camadas IBGE
 │       ├── poiService.js         # Overpass API (POIs)
 │       └── csvExport.js          # Exportação CSV
 │
@@ -197,6 +201,12 @@ O sistema utiliza o GeoPackage `BR_setores_CD2022.gpkg` (~1.5 GB) que contém:
 | `v0005` | Média de moradores por domicílio |
 | `AREA_KM2` | Área em km² |
 | `NM_BAIRRO` | Nome do bairro |
+| `NM_DIST` | Nome do distrito |
+| `NM_SUBDIST` | Nome do subdistrito (fallback: NM_DIST) |
+| `NU` | Núcleo urbano |
+| `AGLOM` | Aglomerado |
+| `RGINT` | Região geográfica intermediária |
+| `RGI` | Região geográfica imediata |
 | `SITUACAO` | Situação (Urbano/Rural) |
 
 > **Nota:** O arquivo GeoPackage não é versionado no Git (~1.5 GB). Adicione à pasta `malha/` após clonar.
