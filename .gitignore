@@ -31,3 +31,15 @@ nginx/certs/
 
 # Contexto do projeto para Claude (pode conter informações sensíveis)
 CLAUDE.md
+
+# Contexto gerado para agentes de IA
+.context/
+AGENTS.md
+
+# Diretórios de ferramentas de IA (não versionar)
+.claude/
+.codex/
+.cursor/agents/
+.gemini/
+.cursorrules
+.github/agents/
