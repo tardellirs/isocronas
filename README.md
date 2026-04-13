@@ -2,6 +2,10 @@
 
 Ferramenta de inteligência imobiliária e mobilidade urbana que calcula **isócronas** (áreas de alcance por tempo) e cruza com dados censitários do IBGE.
 
+<p align="center">
+  <img src="docs/isochrone_map_excalidraw.png" alt="Diagrama da ferramenta de isócronas" width="720">
+</p>
+
 ![React](https://img.shields.io/badge/React-18-61DAFB?logo=react&logoColor=white)
 ![Vite](https://img.shields.io/badge/Vite-6-646CFF?logo=vite&logoColor=white)
 ![FastAPI](https://img.shields.io/badge/FastAPI-0.100+-009688?logo=fastapi&logoColor=white)
