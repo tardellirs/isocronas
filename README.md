@@ -177,7 +177,7 @@ Acesse: **seu repositório GitHub → Settings → Secrets and variables → Act
 
 | Secret | Valor |
 |--------|-------|
-| `SSH_HOST` | `132.226.247.169` |
+| `SSH_HOST` | IP público da instância Oracle |
 | `SSH_USER` | usuário SSH da instância (`ubuntu` ou `opc`) |
 | `SSH_PRIVATE_KEY` | chave privada SSH para acesso à instância |
 

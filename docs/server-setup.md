@@ -2,7 +2,7 @@
 
 Guia de configuração da instância para rodar o **M2G2 Isócronas** via Docker.
 
-**IP:** `132.226.247.169` | **Domínio:** `iso.imob.dev` (Cloudflare)
+**Domínio:** `iso.imob.dev` (Cloudflare)
 
 ---
 
@@ -25,7 +25,7 @@ O registro A deve existir assim:
 
 | Tipo | Nome | Conteúdo | Proxy |
 |------|------|----------|-------|
-| `A` | `iso` | `132.226.247.169` | ☁️ **Proxied** (nuvem **laranja**) |
+| `A` | `iso` | `<IP da instância Oracle>` | ☁️ **Proxied** (nuvem **laranja**) |
 
 > ⚠️ Se a nuvem estiver **cinza** (DNS only), o SSL não vai funcionar. Clique para torná-la **laranja**.
 
@@ -90,11 +90,11 @@ cd ~/isocronas
 Execute **na sua máquina local**:
 
 ```bash
-ssh ubuntu@132.226.247.169 "mkdir -p ~/isocronas/malha"
+ssh ubuntu@<IP_INSTANCIA> "mkdir -p ~/isocronas/malha"
 
 rsync -avz --progress \
   /caminho/local/para/BR_setores_CD2022.gpkg \
-  ubuntu@132.226.247.169:~/isocronas/malha/BR_setores_CD2022.gpkg
+  ubuntu@<IP_INSTANCIA>:~/isocronas/malha/BR_setores_CD2022.gpkg
 ```
 
 ---
@@ -146,7 +146,7 @@ chmod 600 ~/.ssh/authorized_keys
 
 | Secret | Valor |
 |--------|-------|
-| `SSH_HOST` | `132.226.247.169` |
+| `SSH_HOST` | IP público da instância Oracle |
 | `SSH_USER` | `ubuntu` (ou `opc`) |
 | `SSH_PRIVATE_KEY` | conteúdo de `~/.ssh/github_actions` (chave privada) |
 
